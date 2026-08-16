@@ -869,62 +869,53 @@ def render_advices_page(saved, skipped, domain_error="", save_error=False, remov
     template = r"""<!DOCTYPE html>
 <html lang="zh-CN">
 <head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>节点建议设置</title>
 <style>
-  :root {
-    --bg:#fff; --paper:#fbfbfb; --card:#fff; --line:#d8d2c4; --text:#2b261f;
-    --muted:#7a7265; --primary:#e0a458; --primary-hover:#c68a3e;
-    --coral:#c85a32; --coral-dark:#8e2800; --teal:#1d6a61; --white:#fff;
-  }
-  body {
-    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
-    background:var(--paper); color:var(--text); margin:0; padding:24px 16px;
-    display:flex; justify-content:center;
-  }
-  .card {
-    background:var(--card); border:1px solid var(--line); border-radius:6px;
-    box-shadow:0 2px 6px rgba(0,0,0,0.04); width:100%; max-width:640px; padding:28px 24px;
-  }
-  h1 { font-size:20px; font-weight:700; margin:0 0 4px; color:var(--coral-dark); }
-  .sub { font-size:13px; color:var(--muted); margin:0 0 18px; }
-  .alert { background:#eef7f2; border:1px solid #9fd3bd; color:var(--teal); padding:8px 12px; border-radius:4px; font-size:13px; margin-bottom:14px; }
-  .alert-error { background:#fdf0ec; border:1px solid #ecc4ba; color:var(--coral-dark); padding:8px 12px; border-radius:4px; font-size:13px; margin-bottom:14px; }
-  fieldset { border:1px solid var(--line); border-radius:4px; padding:14px 14px 12px; margin:0 0 14px; background:var(--paper); }
-  legend { font-size:12px; font-weight:700; color:var(--coral-dark); padding:0 4px; }
-  .modes { display:flex; flex-wrap:wrap; gap:16px; margin:4px 0 6px; }
-  .modes label { font-size:13px; display:inline-flex; align-items:center; gap:6px; cursor:pointer; }
-  .hint { font-size:12px; color:var(--muted); margin:4px 0 0; }
-  .field-label { display:block; font-size:13px; font-weight:700; color:var(--text); margin:10px 0 4px; }
-  .field-label:first-of-type { margin-top:2px; }
-  input[type="text"], input[type="number"], textarea {
-    width:100%; box-sizing:border-box; background:var(--white); border:1px solid var(--line);
-    border-radius:4px; color:var(--text); padding:7px 9px; font-size:13px;
-  }
-  textarea { min-height:90px; resize:vertical; font-family:Consolas,Menlo,monospace; }
-  .tls-toggle { display:inline-flex; align-items:center; gap:6px; font-size:12px; color:var(--muted); margin-top:6px; cursor:pointer; }
-  .url-bar { display:flex; gap:8px; margin-bottom:8px; }
-  .url-bar input { flex:1; }
-  button, .btn-primary, .btn-outline {
-    display:inline-flex; align-items:center; justify-content:center;
-    padding:6px 14px; font-size:13px; font-weight:700; border-radius:4px; cursor:pointer;
-    text-decoration:none;
-  }
-  .btn-primary { background:var(--coral); color:#fff; border:1px solid var(--coral-dark); }
-  .btn-primary:hover { background:var(--coral-dark); }
-  .btn-outline { background:var(--white); border:1px solid var(--line); color:var(--text); }
-  .btn-outline:hover { background:var(--paper); }
-  .actions { display:flex; gap:10px; margin-top:18px; }
-  .actions button { flex:1; }
-  .actions a { flex:1; }
-  .link-count { margin-top:14px; font-size:12px; color:var(--muted); text-align:center; }
-  .url-msg { font-size:12px; margin-bottom:6px; }
-  .url-msg.ok { color:var(--teal); }
+  :root { --ink:#17211b; --muted:#68736b; --paper:#f7f5ef; --white:#fffdf8; --coral:#e45b47; --coral-dark:#be4334; --teal:#2d9085; --line:#d9d8cf; }
+  * { margin:0; padding:0; box-sizing:border-box; }
+  body { background:var(--paper); color:var(--ink); font-family:Microsoft YaHei, PingFang SC, Noto Sans SC, sans-serif; line-height:1.6; padding:48px 16px; }
+  h1 { font-size:22px; font-weight:800; letter-spacing:.5px; }
+  .sub { color:var(--muted); font-size:13px; margin-top:4px; }
+  .card { width:min(680px,100%); margin:0 auto; background:var(--white); border:1px solid var(--line); border-radius:8px; padding:36px; box-shadow:0 18px 45px rgba(23,33,27,.08); }
+  .alert { margin-top:18px; padding:12px 14px; border-left:4px solid var(--teal); background:#e2f0eb; color:#1d6a61; font-size:13px; border-radius:3px; }
+  .alert-error { margin-top:18px; padding:12px 14px; border-left:4px solid var(--coral); background:#f8e4de; color:var(--coral-dark); font-size:13px; border-radius:3px; }
+  fieldset { border:0; margin-top:28px; }
+  legend { font-size:15px; font-weight:800; margin-bottom:12px; }
+  .modes { display:flex; gap:22px; flex-wrap:wrap; }
+  .modes label { display:inline-flex; align-items:center; gap:8px; font-size:14px; font-weight:600; cursor:pointer; }
+  .modes input { width:17px; height:17px; accent-color:var(--coral); cursor:pointer; }
+  .hint { color:var(--muted); font-size:12px; margin:2px 0 10px; }
+  .hint code { background:var(--paper); padding:1px 5px; border-radius:3px; font-size:12px; }
+  .url-bar { display:flex; gap:8px; margin-top:4px; }
+  .url-bar input[type=text] { flex:1; margin-top:0; }
+  .url-bar button { min-height:40px; padding:0 16px; font-size:13px; }
+  .url-msg { margin-top:8px; font-size:12px; min-height:18px; }
+  .url-msg.ok { color:#1d8a5c; }
   .url-msg.warn { color:var(--coral-dark); }
-  .check-box { margin-top:6px; }
-  .check-summary { font-size:12px; color:var(--muted); margin-bottom:4px; }
-  .check-item { display:flex; align-items:center; gap:6px; font-size:12px; font-family:Consolas,Menlo,monospace; margin:2px 0; }
+  textarea { width:100%; min-height:180px; margin-top:10px; padding:12px; border:1px solid var(--line); border-radius:4px; background:var(--paper); font-family:Consolas,Menlo,monospace; font-size:13px; resize:vertical; }
+  input[type=text] { width:100%; margin-top:8px; padding:10px 12px; border:1px solid var(--line); border-radius:4px; background:var(--paper); font-family:Consolas,Menlo,monospace; font-size:13px; }
+  .field-label { display:block; font-size:13px; font-weight:700; margin-top:14px; }
+  .tls-toggle { display:inline-flex; align-items:center; gap:8px; margin-top:10px; font-size:13px; font-weight:600; cursor:pointer; color:var(--ink); }
+  .tls-toggle input { width:17px; height:17px; accent-color:var(--teal); cursor:pointer; }
+  .tls-toggle.locked { color:var(--muted); }
+  .tls-toggle.locked input { cursor:not-allowed; }
+  .actions { display:flex; gap:28px; margin-top:26px; }
+  button, a[class*="btn-"] { display:inline-flex; align-items:center; justify-content:center; gap:8px; min-height:44px; padding:0 20px; border-radius:4px; font-weight:700; font-size:14px; text-decoration:none; cursor:pointer; border:1px solid transparent; transition:transform .2s ease, background-color .2s ease; }
+  button:hover, a[class*="btn-"]:hover { transform:translateY(-2px); }
+  .btn-primary { background:var(--coral); color:#fff; }
+  .btn-primary:hover { background:var(--coral-dark); }
+  .btn-outline { border-color:var(--ink); color:var(--ink); background:transparent; }
+  .btn-outline:hover { background:var(--ink); color:#fff; }
+  .link-count { margin-top:22px; padding:14px; border:1px dashed var(--line); border-radius:4px; background:var(--paper); font-size:13px; }
+  .link-count strong { color:var(--coral); }
+  .check-box { margin-top:12px; border:1px solid var(--line); border-radius:4px; background:var(--paper); padding:10px 12px; font-size:12px; }
+  .check-box .check-summary { color:var(--muted); margin-bottom:6px; }
+  .check-box .check-summary strong.ok { color:#1d8a5c; }
+  .check-box .check-summary strong.bad { color:var(--coral); }
+  .check-item { padding:3px 0; border-bottom:1px dashed var(--line); display:flex; gap:8px; align-items:flex-start; flex-wrap:wrap; }
+  .check-item:last-child { border-bottom:0; }
   .check-item.ok { color:#1d6a61; }
   .check-item.url { color:#1d5f8a; }
   .check-item.bad { color:var(--coral-dark); background:#fdf0ec; border:1px solid #ecc4ba; border-radius:3px; padding:4px 6px; margin-bottom:4px; }
@@ -934,29 +925,38 @@ def render_advices_page(saved, skipped, domain_error="", save_error=False, remov
   .badge { flex:none; font-size:11px; padding:0 6px; border-radius:3px; border:1px solid var(--line); }
   .badge.ok { color:#1d6a61; border-color:#9fd3bd; background:#e9f6ef; }
   .badge.bad { color:var(--coral-dark); border-color:#ecc4ba; background:#f9e9e4; }
-  .badge { display:inline-block; font-size:11px; padding:2px 6px; border-radius:3px; margin-right:4px; margin-bottom:4px; }
-  .badge-ok { color:#1d6a61; border:1px solid #9fd3bd; background:#e9f6ef; }
-  .badge-err { color:var(--coral-dark); border:1px solid #ecc4ba; background:#f9e9e4; }
+  .badge.note { color:var(--muted); border-color:var(--line); background:var(--white); }
   .warn { color:var(--coral-dark); font-weight:700; }
   .preview-box { margin-top:12px; border:1px dashed #e0a458; border-radius:4px; background:#fff8ec; padding:10px 12px; }
   .preview-box[hidden] { display:none; }
   .preview-head { display:flex; justify-content:space-between; align-items:center; margin-bottom:6px; font-size:12px; font-weight:700; color:#9a5b1e; }
   .preview-list { max-height:220px; overflow-y:auto; }
-  .preview-item { display:flex; align-items:center; justify-content:space-between; gap:8px; padding:4px 6px; border:1px solid #e6cba1; border-radius:3px; margin-bottom:4px; font-family:Consolas,Menlo,monospace; font-size:12px; color:#7a4a12; background:#fffdf6; }
-  .preview-item code { flex:1; word-break:break-all; }
-  .preview-item button { flex:none; padding:0 8px; height:24px; border:1px solid #e0a458; background:#fff3e0; color:var(--coral-dark); border-radius:3px; cursor:pointer; font-size:12px; }
-  .preview-item button:hover { background:var(--coral); color:#fff; }
+  .preview-item { display:flex; align-items:center; gap:8px; padding:4px 6px; border:1px solid #e6cba1; border-radius:3px; margin-bottom:4px; font-family:Consolas,Menlo,monospace; font-size:12px; color:#7a4a12; background:#fffdf6; }
+  .preview-item:last-child { margin-bottom:0; }
+  .preview-node { flex:1; word-break:break-all; }
+  .preview-del { flex:none; width:24px; height:24px; min-height:24px; padding:0; border:1px solid #e0a458; background:#fff3e0; color:var(--coral-dark); border-radius:3px; cursor:pointer; font-size:14px; line-height:1; }
+  .preview-del:hover { background:var(--coral); color:#fff; }
+  .source-list { margin-top:10px; }
+  .source-summary { font-size:12px; font-weight:700; color:var(--teal); margin-bottom:6px; }
   .source-item { border:1px solid var(--line); border-radius:4px; background:var(--paper); padding:8px 10px; margin-bottom:6px; }
   .source-head { display:flex; align-items:center; gap:8px; flex-wrap:wrap; }
   .source-url { flex:1; font-family:Consolas,Menlo,monospace; font-size:12px; word-break:break-all; color:#1d5f8a; }
+  .source-meta { flex:none; font-size:11px; color:var(--muted); white-space:nowrap; }
+  .source-remove-form { flex:none; margin:0; }
   .source-remove { min-height:26px; height:26px; padding:0 10px; font-size:11px; border:1px solid #ecc4ba; background:#f9e9e4; color:var(--coral-dark); border-radius:3px; cursor:pointer; }
   .source-remove:hover { background:var(--coral); color:#fff; }
+  .source-detail { margin-top:6px; font-size:12px; }
+  .source-detail summary { cursor:pointer; color:var(--teal); font-weight:700; }
+  .source-nodes { margin-top:6px; max-height:180px; overflow-y:auto; border:1px dashed var(--line); border-radius:3px; padding:6px 8px; background:var(--white); }
+  .source-node { font-family:Consolas,Menlo,monospace; font-size:11px; padding:2px 0; border-bottom:1px dashed var(--line); word-break:break-all; }
+  .source-node:last-child { border-bottom:0; }
+  .source-empty { font-size:12px; color:var(--muted); padding:6px 0; }
 </style>
 </head>
 <body>
 <div class="card">
   <h1>节点建议设置</h1>
-  <p class="sub">选择要生成的代理协议与传输方式，填写节点名称前缀与地址；#备注 会保留显示，生成节点时自动忽略</p>
+  <p class="sub">选择要生成的代理协议与传输方式，填写节点地址；#备注 会保留显示，生成节点时自动忽略</p>
   __SAVED_ALERT__
   __REMOVED_ALERT__
   __DOMAIN_ERROR_ALERT__
@@ -969,7 +969,7 @@ def render_advices_page(saved, skipped, domain_error="", save_error=False, remov
         <label><input type="checkbox" name="proto_b" value="1"__PROTO_B_CHECKED__> Trojan</label>
         <label><input type="checkbox" name="proto_c" value="1"__PROTO_C_CHECKED__> SS（Shadowsocks）</label>
       </div>
-      <p class="hint">兼容性：VLESS / Trojan 支持 WS、gRPC、XHTTP；<span class="warn">SS 仅支持 WS</span>。勾选 SS 时，无论选择哪种传输方式，SS 链接均固定生成 WS 传输；勾选 XHTTP 时，Trojan 因部分客户端不支持，仅生成 VLESS 节点。</p>
+      <p class="hint">兼容性：VLESS / Trojan 支持 WS、gRPC、XHTTP；<span class="warn">SS 仅支持 WS</span>，勾选 SS 时不会为 gRPC/XHTTP 生成 SS 链接。</p>
     </fieldset>
     <fieldset>
       <legend>传输方式（单选）</legend>
@@ -978,7 +978,7 @@ def render_advices_page(saved, skipped, domain_error="", save_error=False, remov
         <label><input type="radio" name="conn_mode" value="grpc"__CONN_GRPC_CHECKED__> gRPC</label>
         <label><input type="radio" name="conn_mode" value="xhttp"__CONN_XHTTP_CHECKED__> XHTTP</label>
       </div>
-      <p class="hint">SS 节点始终使用 WS；Trojan 在 XHTTP 下部分客户端不支持，无法连接时请换 WS 或 gRPC。</p>
+      <p class="hint">SS 节点始终使用 WS；Trojan 的 XHTTP 传输部分客户端不支持，无法连接时请改用 WS 或 gRPC。</p>
     </fieldset>
     <fieldset>
       <legend>域名与节点设置</legend>
@@ -991,13 +991,13 @@ def render_advices_page(saved, skipped, domain_error="", save_error=False, remov
         <input type="checkbox" id="direct-tls" name="direct_domain_tls" value="1"__DIRECT_TLS_CHECKED____DIRECT_TLS_DISABLED__>
         <span>安全连接（该域名已有证书）</span>
       </label>
-      <p class="hint">直连域名端口为 443 时默认锁定开启安全连接（免证书配置）；填其他端口时可手动勾选是否开启。</p>
+      <p class="hint">只填域名或端口为 443 时默认使用安全连接（不可关闭）；填写其他端口时请手动勾选该域名是否已有证书。</p>
       <label class="field-label" for="gateway-domain">套CDN域名</label>
       <input id="gateway-domain" type="text" name="gateway_domain" value="__GATEWAY_DOMAIN_TEXT__" spellcheck="false" placeholder="可选，如 cdn.example.com">
     </fieldset>
     <fieldset>
       <legend>节点地址</legend>
-      <p class="hint">每行一个节点，格式 <code>地址[:端口][#备注]</code>，备注如 <code>#JP</code>、<code>#US</code>，保存后保留显示，生成节点时自动忽略。也可在下方粘贴节点列表链接，直接追加（自动去重、去非节点链接）或先预览查看节点。</p>
+      <p class="hint">每行一个节点，格式 <code>地址[:端口][#备注]</code>，备注（如 <code>#JP</code>、<code>#US</code>）保存后保留显示、生成节点时自动忽略。也可以在下方粘贴节点列表链接，直接点击追加（自动校验链接并保存），或先预览查看节点。</p>
       <div class="url-bar">
         <input id="node-url" type="text" spellcheck="false" placeholder="粘贴节点列表链接，如 https://bestcf.pages.dev/wetest/ipv4.txt">
         <button type="button" id="url-preview" class="btn-outline">预览</button>
@@ -1008,17 +1008,17 @@ def render_advices_page(saved, skipped, domain_error="", save_error=False, remov
         <div class="preview-head"><span id="url-preview-title">预览结果</span></div>
         <div class="preview-list" id="url-preview-list"></div>
       </div>
-      <textarea name="addresses" placeholder="1.2.3.4:443#JP&#10;2.3.4.5:443#US">__ADDRESS_TEXT__</textarea>
-      <div class="check-box" id="format-check" style="display:none;"></div>
+      <textarea name="addresses" placeholder="1.2.3.4:443&#10;2.2.2.2:8443#US">__ADDRESS_TEXT__</textarea>
+      <div class="check-box" id="format-check"></div>
     </fieldset>
     <fieldset>
       <legend>自动更新</legend>
       <div class="modes">
-        <label><input type="checkbox" name="auto_update" value="1"__AUTO_UPDATE_CHECKED__> 启用自动更新</label>
+        <label><input type="checkbox" name="auto_update" value="1"__AUTO_UPDATE_CHECKED__> 启用自动更新（节点链接按间隔自动刷新并覆盖该链接来源的节点）</label>
       </div>
-      <p class="hint">开启后，后台将定时从已记录的节点链接拉取最新节点并合并保存；手动添加的单行节点不会被覆盖。</p>
       <label class="field-label" for="update-interval">刷新间隔（分钟）</label>
       <input id="update-interval" type="number" name="update_interval" min="1" value="__UPDATE_INTERVAL__">
+      <p class="hint">默认 720 分钟（12 小时）。启用后，保存时粘贴过的节点链接（如 <code>https://bestcf.pages.dev/wetest/ipv4.txt</code>）会按此间隔自动重新抓取，并用最新节点覆盖该链接来源的旧节点。</p>
       <div class="source-list" id="source-list">
         __SOURCES_HTML__
       </div>
@@ -1034,85 +1034,121 @@ def render_advices_page(saved, skipped, domain_error="", save_error=False, remov
       var directTls = document.getElementById("direct-tls");
       var directTlsWrap = document.getElementById("direct-tls-wrap");
       if (directInput && directTls && directTlsWrap) {
-        var updateTls = function(){
-          var v = (directInput.value || "").trim();
-          if (!v) {
-            directTlsWrap.style.display = "flex";
-            directTls.disabled = false;
-            return;
+        var directTlsSync = function(){
+          var v = String(directInput.value || "").trim();
+          var port = 443;
+          var m = v.match(/^\[([^\[\]]+)\]:([0-9]{1,5})$/);
+          if (m) { port = parseInt(m[2], 10); }
+          else {
+            m = v.match(/^([A-Za-z0-9][A-Za-z0-9._-]*):([0-9]{1,5})$/);
+            if (m) { port = parseInt(m[2], 10); }
           }
-          var portMatch = v.match(/:(\d+)$/);
-          if (!portMatch || portMatch[1] === "443") {
+          if (port === 443) {
             directTls.checked = true;
             directTls.disabled = true;
-            directTlsWrap.style.display = "none";
+            directTlsWrap.classList.add("locked");
           } else {
             directTls.disabled = false;
-            directTlsWrap.style.display = "flex";
+            directTlsWrap.classList.remove("locked");
           }
         };
-        directInput.addEventListener("input", updateTls);
-        updateTls();
+        directInput.addEventListener("input", directTlsSync);
+        directTlsSync();
       }
-      var ta = document.querySelector('textarea[name="addresses"]');
-      var box = document.getElementById("format-check");
-      var renderCheck = function(){
-        var lines = (ta.value || "").split(/\r?\n/).map(function(s){ return s.trim(); }).filter(Boolean);
-        if (!lines.length) { box.style.display = "none"; return; }
-        var valid = 0, invalid = 0, urls = 0;
-        lines.forEach(function(l){
-          if (/^https?:\/\//i.test(l)) { urls++; return; }
-          var withoutRemark = l.split("#")[0].trim();
-          if (!withoutRemark) { invalid++; return; }
-          var parts = withoutRemark.split(":");
-          var host = parts[0], port = parts[1];
-          if (!host) { invalid++; return; }
-          if (port !== undefined && (!/^\d+$/.test(port) || parseInt(port,10)<1 || parseInt(port,10)>65535)) {
-            invalid++;
-            return;
+      var parseLine = function(s){
+        var line = String(s || "").trim();
+        if (!line) return null;
+        if (/^https?:\/\//i.test(line)) return { ok: true, url: line };
+        var note = "", body = line, idx = line.indexOf("#");
+        if (idx >= 0) { body = line.slice(0, idx); note = line.slice(idx + 1).trim(); }
+        var m = body.match(/^\[([^\[\]]+)\]:([0-9]{1,5})$/);
+        if (m) return { ok: true, host: m[1], port: parseInt(m[2], 10), note: note };
+        m = body.match(/^([A-Za-z0-9][A-Za-z0-9._-]*):([0-9]{1,5})$/);
+        if (m) return { ok: true, host: m[1], port: parseInt(m[2], 10), note: note };
+        m = body.match(/^([A-Za-z0-9][A-Za-z0-9._-]*)$/);
+        if (m) return { ok: true, host: m[1], port: 443, noPort: true, note: note };
+        return { ok: false, note: note };
+      };
+      var protoBadge = function(note){
+        var n = String(note || "").toLowerCase();
+        var protos = [["vless","VLESS"],["trojan","Trojan"],["ss","SS"]];
+        var out = [];
+        if (n.indexOf("不支持") >= 0 || n.indexOf("不兼容") >= 0 || n.indexOf("禁用") >= 0) {
+          for (var i = 0; i < protos.length; i++) {
+            if (n.indexOf(protos[i][0]) >= 0) out.push('<span class="badge bad">不支持 ' + protos[i][1] + '</span>');
           }
-          valid++;
+        } else if (n.indexOf("仅支持") >= 0 || n.indexOf("只支持") >= 0 || n.indexOf("仅") >= 0) {
+          var found = [];
+          for (var i = 0; i < protos.length; i++) {
+            if (n.indexOf(protos[i][0]) >= 0) found.push(protos[i][1]);
+          }
+          if (found.length) out.push('<span class="badge ok">仅支持 ' + found.join("、") + '</span>');
+        } else if (n) {
+          out.push('<span class="badge note">' + esc(note) + '</span>');
+        }
+        return out.join("");
+      };
+      var ta = document.querySelector("textarea[name=addresses]");
+      if (!ta) return;
+      var renderCheck = function(){
+        var box = document.getElementById("format-check");
+        if (!box) return;
+        var lines = (ta.value || "").split(/\r?\n/);
+        var badCount = 0, html = [];
+        lines.forEach(function(raw){
+          var p = parseLine(raw);
+          if (p === null || p.ok) return;
+          badCount++;
+          html.push('<div class="check-item bad"><span class="tag">&#10007;</span><span class="line">' + esc(raw) + '</span><span class="badge bad">无效</span></div>');
         });
-        var parts = [];
-        if (valid) parts.push('<span class="badge badge-ok">✔ ' + valid + ' 个节点格式正确</span>');
-        if (urls) parts.push('<span class="badge badge-ok">🔗 ' + urls + ' 个节点列表链接（保存时自动抓取）</span>');
-        if (invalid) parts.push('<span class="badge badge-err">✖ ' + invalid + ' 行格式有误</span>');
-        box.innerHTML = parts.join(" ");
-        box.style.display = "block";
+        box.style.display = badCount ? "" : "none";
+        box.innerHTML = badCount
+          ? '<div class="check-summary">以下 <strong class="bad">' + badCount + '</strong> 行无效，请修改或删除</div>' + html.join("")
+          : "";
       };
       ta.addEventListener("input", renderCheck);
       renderCheck();
+      var previewed = [];
+      var previewedUrl = "";
       var urlInput = document.getElementById("node-url");
       var urlMsg = document.getElementById("url-msg");
       var previewBtn = document.getElementById("url-preview");
       var previewBox = document.getElementById("url-preview-box");
-      var previewTitle = document.getElementById("url-preview-title");
       var previewList = document.getElementById("url-preview-list");
-      var previewed = [];
-      var previewedUrl = "";
-      var setMsg = function(text, isOk){
-        urlMsg.textContent = text || "";
-        urlMsg.className = "url-msg " + (isOk ? "msg-ok" : "msg-err");
-      };
-      var updatePreviewButton = function(){
-        previewBtn.textContent = previewed.length ? "取消预览" : "预览";
+      var previewTitle = document.getElementById("url-preview-title");
+      var setMsg = function(text, ok){
+        urlMsg.textContent = text;
+        urlMsg.className = "url-msg " + (ok ? "ok" : "warn");
       };
       var renderPreview = function(){
-        if (!previewed.length) { previewBox.hidden = true; previewList.innerHTML = ""; return; }
-        previewTitle.textContent = "预览节点（共 " + previewed.length + " 个，可点击删除单个）：";
-        previewList.innerHTML = previewed.map(function(item, idx){
-          return '<div class="preview-item"><code>' + esc(item) + '</code><button type="button" data-idx="' + idx + '">删除</button></div>';
-        }).join("");
-        previewBox.hidden = false;
-        previewList.querySelectorAll("button").forEach(function(btn){
-          btn.addEventListener("click", function(){
-            var i = parseInt(btn.getAttribute("data-idx"), 10);
+        previewList.innerHTML = "";
+        previewed.forEach(function(line, i){
+          var row = document.createElement("div");
+          row.className = "preview-item";
+          var span = document.createElement("span");
+          span.className = "preview-node";
+          span.textContent = line;
+          span.title = line;
+          var del = document.createElement("button");
+          del.type = "button";
+          del.className = "preview-del";
+          del.textContent = "×";
+          del.title = "删除该节点";
+          del.addEventListener("click", function(){
             previewed.splice(i, 1);
             renderPreview();
             updatePreviewButton();
-            setMsg("已删除该预览节点，剩余 " + previewed.length + " 个", true);
+            setMsg(previewed.length ? "已删除 1 个节点，剩余 " + previewed.length + " 个，可点击追加" : "预览节点已全部删除", true);
           });
+          row.appendChild(span);
+          row.appendChild(del);
+          previewList.appendChild(row);
         });
+        previewTitle.textContent = "预览结果（" + previewed.length + " 个节点，可删除后追加）";
+        previewBox.hidden = !previewed.length;
+      };
+      var updatePreviewButton = function(){
+        previewBtn.textContent = previewed.length ? "取消预览" : "预览";
       };
       var clearPreview = function(){
         previewed = [];
@@ -1123,7 +1159,7 @@ def render_advices_page(saved, skipped, domain_error="", save_error=False, remov
       };
       var doPreview = function(){
         if (previewed.length) { clearPreview(); return; }
-        var u = (urlInput.value || "").trim();
+        var u = String(urlInput.value || "").trim();
         if (!/^https?:\/\//i.test(u)) { setMsg("请输入有效的 http(s) 链接", false); return; }
         urlMsg.textContent = "正在识别…";
         urlMsg.className = "url-msg";
@@ -1138,12 +1174,16 @@ def render_advices_page(saved, skipped, domain_error="", save_error=False, remov
               previewedUrl = u;
               renderPreview();
               updatePreviewButton();
-              setMsg("已识别 " + d.count + " 个节点，可删除不需要的节点后点击追加", true);
+              setMsg("已识别 " + d.count + " 个节点，可删除不需要的节点后点击追加（追加会自动保存）", true);
             } else {
+              previewed = [];
+              previewedUrl = "";
+              renderPreview();
+              updatePreviewButton();
               setMsg(d.error || "无效链接", false);
             }
           })
-          .catch(function(){ setMsg("无效链接或无法访问", false); });
+          .catch(function(){ previewed = []; previewedUrl = ""; renderPreview(); updatePreviewButton(); setMsg("无效链接或无法访问", false); });
       };
       var submitMerged = function(extraNodes, sourceUrl){
         var cur = (ta.value || "").split(/\r?\n/).map(function(s){ return s.trim(); }).filter(Boolean);
@@ -1158,8 +1198,9 @@ def render_advices_page(saved, skipped, domain_error="", save_error=False, remov
         ta.form.submit();
       };
       var doAppend = function(){
-        var u = (urlInput.value || "").trim();
+        var u = String(urlInput.value || "").trim();
         if (/^https?:\/\//i.test(u)) {
+          // 直接追加链接：先校验链接有效性，有效则追加节点并保存
           urlMsg.textContent = "正在校验链接并抓取节点…";
           urlMsg.className = "url-msg";
           var fd = new URLSearchParams();
