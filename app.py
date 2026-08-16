@@ -871,65 +871,73 @@ def render_advices_page(saved, skipped, domain_error="", save_error=False, remov
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>节点配置与设置管理</title>
+<title>节点建议设置</title>
 <style>
   :root {
-    --bg:#0f172a; --card:#1e293b; --line:#334155; --text:#f1f5f9;
-    --muted:#94a3b8; --primary:#0ea5e9; --primary-hover:#0284c7;
-    --accent:#10b981; --coral:#f43f5e; --coral-dark:#be123c;
-    --paper:#1e293b; --white:#0f172a;
+    --bg:#fff; --paper:#fbfbfb; --card:#fff; --line:#d8d2c4; --text:#2b261f;
+    --muted:#7a7265; --primary:#e0a458; --primary-hover:#c68a3e;
+    --coral:#c85a32; --coral-dark:#8e2800; --teal:#1d6a61; --white:#fff;
   }
   body {
     font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
-    background:var(--bg); color:var(--text); margin:0; padding:24px 16px;
+    background:var(--paper); color:var(--text); margin:0; padding:24px 16px;
     display:flex; justify-content:center;
   }
   .card {
-    background:var(--card); border:1px solid var(--line); border-radius:12px;
-    box-shadow:0 10px 25px rgba(0,0,0,0.3); width:100%; max-width:680px; padding:28px 24px;
+    background:var(--card); border:1px solid var(--line); border-radius:6px;
+    box-shadow:0 2px 6px rgba(0,0,0,0.04); width:100%; max-width:640px; padding:28px 24px;
   }
-  h1 { font-size:22px; font-weight:700; margin:0 0 4px; color:var(--text); }
-  .sub { font-size:13px; color:var(--muted); margin:0 0 20px; line-height:1.5; }
-  .alert { background:rgba(16,185,129,0.15); border:1px solid rgba(16,185,129,0.3); color:#34d399; padding:10px 14px; border-radius:6px; font-size:13px; margin-bottom:18px; }
-  .alert-error { background:rgba(244,63,94,0.15); border:1px solid rgba(244,63,94,0.3); color:#fb7185; padding:10px 14px; border-radius:6px; font-size:13px; margin-bottom:18px; }
-  fieldset { border:1px solid var(--line); border-radius:8px; padding:16px; margin:0 0 18px; background:rgba(15,23,42,0.6); }
-  legend { font-size:13px; font-weight:700; color:var(--primary); padding:0 6px; }
-  .modes { display:flex; flex-wrap:wrap; gap:16px; margin:4px 0 8px; }
-  .modes label { font-size:14px; display:inline-flex; align-items:center; gap:6px; cursor:pointer; }
-  .hint { font-size:12px; color:var(--muted); margin:6px 0 0; line-height:1.4; }
-  .field-label { display:block; font-size:13px; font-weight:600; color:var(--text); margin:12px 0 4px; }
-  .field-label:first-of-type { margin-top:4px; }
+  h1 { font-size:20px; font-weight:700; margin:0 0 4px; color:var(--coral-dark); }
+  .sub { font-size:13px; color:var(--muted); margin:0 0 18px; }
+  .alert { background:#eef7f2; border:1px solid #9fd3bd; color:var(--teal); padding:8px 12px; border-radius:4px; font-size:13px; margin-bottom:14px; }
+  .alert-error { background:#fdf0ec; border:1px solid #ecc4ba; color:var(--coral-dark); padding:8px 12px; border-radius:4px; font-size:13px; margin-bottom:14px; }
+  fieldset { border:1px solid var(--line); border-radius:4px; padding:14px 14px 12px; margin:0 0 14px; background:var(--paper); }
+  legend { font-size:12px; font-weight:700; color:var(--coral-dark); padding:0 4px; }
+  .modes { display:flex; flex-wrap:wrap; gap:16px; margin:4px 0 6px; }
+  .modes label { font-size:13px; display:inline-flex; align-items:center; gap:6px; cursor:pointer; }
+  .hint { font-size:12px; color:var(--muted); margin:4px 0 0; }
+  .field-label { display:block; font-size:13px; font-weight:700; color:var(--text); margin:10px 0 4px; }
+  .field-label:first-of-type { margin-top:2px; }
   input[type="text"], input[type="number"], textarea {
-    width:100%; box-sizing:border-box; background:#0b1120; border:1px solid var(--line);
-    border-radius:6px; color:var(--text); padding:9px 12px; font-size:13px;
-    transition:border-color 0.2s;
+    width:100%; box-sizing:border-box; background:var(--white); border:1px solid var(--line);
+    border-radius:4px; color:var(--text); padding:7px 9px; font-size:13px;
   }
-  input[type="text"]:focus, input[type="number"]:focus, textarea:focus {
-    outline:none; border-color:var(--primary); box-shadow:0 0 0 2px rgba(14,165,233,0.2);
-  }
-  textarea { min-height:100px; resize:vertical; font-family:Consolas,Menlo,monospace; line-height:1.5; }
+  textarea { min-height:90px; resize:vertical; font-family:Consolas,Menlo,monospace; }
   .tls-toggle { display:inline-flex; align-items:center; gap:6px; font-size:12px; color:var(--muted); margin-top:6px; cursor:pointer; }
   .url-bar { display:flex; gap:8px; margin-bottom:8px; }
   .url-bar input { flex:1; }
   button, .btn-primary, .btn-outline {
     display:inline-flex; align-items:center; justify-content:center;
-    padding:8px 16px; font-size:13px; font-weight:600; border-radius:6px; cursor:pointer;
-    text-decoration:none; transition:all 0.2s; border:none;
+    padding:6px 14px; font-size:13px; font-weight:700; border-radius:4px; cursor:pointer;
+    text-decoration:none;
   }
-  .btn-primary { background:var(--primary); color:#fff; }
-  .btn-primary:hover { background:var(--primary-hover); }
-  .btn-outline { background:transparent; border:1px solid var(--line); color:var(--text); }
-  .btn-outline:hover { background:rgba(255,255,255,0.05); border-color:var(--muted); }
-  .actions { display:flex; gap:12px; margin-top:24px; }
+  .btn-primary { background:var(--coral); color:#fff; border:1px solid var(--coral-dark); }
+  .btn-primary:hover { background:var(--coral-dark); }
+  .btn-outline { background:var(--white); border:1px solid var(--line); color:var(--text); }
+  .btn-outline:hover { background:var(--paper); }
+  .actions { display:flex; gap:10px; margin-top:18px; }
   .actions button { flex:1; }
   .actions a { flex:1; }
-  .link-count { margin-top:16px; font-size:12px; color:var(--muted); text-align:center; }
-  .url-msg { font-size:12px; margin-bottom:8px; }
-  .url-msg.msg-ok { color:#34d399; }
-  .url-msg.msg-err { color:#fb7185; }
+  .link-count { margin-top:14px; font-size:12px; color:var(--muted); text-align:center; }
+  .url-msg { font-size:12px; margin-bottom:6px; }
+  .url-msg.ok { color:var(--teal); }
+  .url-msg.warn { color:var(--coral-dark); }
+  .check-box { margin-top:6px; }
+  .check-summary { font-size:12px; color:var(--muted); margin-bottom:4px; }
+  .check-item { display:flex; align-items:center; gap:6px; font-size:12px; font-family:Consolas,Menlo,monospace; margin:2px 0; }
+  .check-item.ok { color:#1d6a61; }
+  .check-item.url { color:#1d5f8a; }
+  .check-item.bad { color:var(--coral-dark); background:#fdf0ec; border:1px solid #ecc4ba; border-radius:3px; padding:4px 6px; margin-bottom:4px; }
+  .check-item.bad:last-child { border-bottom:1px solid #ecc4ba; margin-bottom:0; }
+  .check-item .tag { flex:none; font-weight:800; }
+  .check-item .line { word-break:break-all; }
+  .badge { flex:none; font-size:11px; padding:0 6px; border-radius:3px; border:1px solid var(--line); }
+  .badge.ok { color:#1d6a61; border-color:#9fd3bd; background:#e9f6ef; }
+  .badge.bad { color:var(--coral-dark); border-color:#ecc4ba; background:#f9e9e4; }
   .badge { display:inline-block; font-size:11px; padding:2px 6px; border-radius:3px; margin-right:4px; margin-bottom:4px; }
   .badge-ok { color:#1d6a61; border:1px solid #9fd3bd; background:#e9f6ef; }
   .badge-err { color:var(--coral-dark); border:1px solid #ecc4ba; background:#f9e9e4; }
+  .warn { color:var(--coral-dark); font-weight:700; }
   .preview-box { margin-top:12px; border:1px dashed #e0a458; border-radius:4px; background:#fff8ec; padding:10px 12px; }
   .preview-box[hidden] { display:none; }
   .preview-head { display:flex; justify-content:space-between; align-items:center; margin-bottom:6px; font-size:12px; font-weight:700; color:#9a5b1e; }
@@ -938,16 +946,16 @@ def render_advices_page(saved, skipped, domain_error="", save_error=False, remov
   .preview-item code { flex:1; word-break:break-all; }
   .preview-item button { flex:none; padding:0 8px; height:24px; border:1px solid #e0a458; background:#fff3e0; color:var(--coral-dark); border-radius:3px; cursor:pointer; font-size:12px; }
   .preview-item button:hover { background:var(--coral); color:#fff; }
-  .source-item { border:1px solid var(--line); border-radius:4px; background:rgba(0,0,0,0.2); padding:8px 10px; margin-bottom:6px; }
+  .source-item { border:1px solid var(--line); border-radius:4px; background:var(--paper); padding:8px 10px; margin-bottom:6px; }
   .source-head { display:flex; align-items:center; gap:8px; flex-wrap:wrap; }
-  .source-url { flex:1; font-family:Consolas,Menlo,monospace; font-size:12px; word-break:break-all; color:#60a5fa; }
+  .source-url { flex:1; font-family:Consolas,Menlo,monospace; font-size:12px; word-break:break-all; color:#1d5f8a; }
   .source-remove { min-height:26px; height:26px; padding:0 10px; font-size:11px; border:1px solid #ecc4ba; background:#f9e9e4; color:var(--coral-dark); border-radius:3px; cursor:pointer; }
   .source-remove:hover { background:var(--coral); color:#fff; }
 </style>
 </head>
 <body>
 <div class="card">
-  <h1>节点配置与设置管理</h1>
+  <h1>节点建议设置</h1>
   <p class="sub">选择要生成的代理协议与传输方式，填写节点名称前缀与地址；#备注 会保留显示，生成节点时自动忽略</p>
   __SAVED_ALERT__
   __REMOVED_ALERT__
@@ -961,7 +969,7 @@ def render_advices_page(saved, skipped, domain_error="", save_error=False, remov
         <label><input type="checkbox" name="proto_b" value="1"__PROTO_B_CHECKED__> Trojan</label>
         <label><input type="checkbox" name="proto_c" value="1"__PROTO_C_CHECKED__> SS（Shadowsocks）</label>
       </div>
-      <p class="hint">兼容性：VLESS / Trojan 支持 WS、gRPC、XHTTP；<span style="color:var(--coral);">SS 仅支持 WS</span>。</p>
+      <p class="hint">兼容性：VLESS / Trojan 支持 WS、gRPC、XHTTP；<span class="warn">SS 仅支持 WS</span>。勾选 SS 时，无论选择哪种传输方式，SS 链接均固定生成 WS 传输；勾选 XHTTP 时，Trojan 因部分客户端不支持，仅生成 VLESS 节点。</p>
     </fieldset>
     <fieldset>
       <legend>传输方式（单选）</legend>
@@ -970,11 +978,12 @@ def render_advices_page(saved, skipped, domain_error="", save_error=False, remov
         <label><input type="radio" name="conn_mode" value="grpc"__CONN_GRPC_CHECKED__> gRPC</label>
         <label><input type="radio" name="conn_mode" value="xhttp"__CONN_XHTTP_CHECKED__> XHTTP</label>
       </div>
+      <p class="hint">SS 节点始终使用 WS；Trojan 在 XHTTP 下部分客户端不支持，无法连接时请换 WS 或 gRPC。</p>
     </fieldset>
     <fieldset>
-      <legend>节点前缀与域名设置</legend>
+      <legend>域名与节点设置</legend>
       <label class="field-label" for="node-name">节点名称前缀 (NAME)</label>
-      <input id="node-name" type="text" name="name" value="__NODE_NAME_TEXT__" spellcheck="false" placeholder="可选，如 MyNode（生成节点如 MyNode-连接 [VLESS-WS]）">
+      <input id="node-name" type="text" name="name" value="__NODE_NAME_TEXT__" spellcheck="false" placeholder="可选，如 djj（留空则不加前缀）">
       <p class="hint">自定义订阅链接中各节点的前缀标识，留空则不加前缀。</p>
       <label class="field-label" for="direct-domain">直连域名</label>
       <input id="direct-domain" type="text" name="direct_domain" value="__DIRECT_DOMAIN_TEXT__" spellcheck="false" placeholder="可选，如 your-domain.com">
@@ -982,14 +991,15 @@ def render_advices_page(saved, skipped, domain_error="", save_error=False, remov
         <input type="checkbox" id="direct-tls" name="direct_domain_tls" value="1"__DIRECT_TLS_CHECKED____DIRECT_TLS_DISABLED__>
         <span>安全连接（该域名已有证书）</span>
       </label>
+      <p class="hint">直连域名端口为 443 时默认锁定开启安全连接（免证书配置）；填其他端口时可手动勾选是否开启。</p>
       <label class="field-label" for="gateway-domain">套CDN域名</label>
       <input id="gateway-domain" type="text" name="gateway_domain" value="__GATEWAY_DOMAIN_TEXT__" spellcheck="false" placeholder="可选，如 cdn.example.com">
     </fieldset>
     <fieldset>
       <legend>节点地址</legend>
-      <p class="hint">每行一个节点，格式 <code>地址[:端口][#备注]</code>，备注保存后保留显示。也可粘贴节点列表链接。</p>
+      <p class="hint">每行一个节点，格式 <code>地址[:端口][#备注]</code>，备注如 <code>#JP</code>、<code>#US</code>，保存后保留显示，生成节点时自动忽略。也可在下方粘贴节点列表链接，直接追加（自动去重、去非节点链接）或先预览查看节点。</p>
       <div class="url-bar">
-        <input id="node-url" type="text" spellcheck="false" placeholder="粘贴节点列表链接">
+        <input id="node-url" type="text" spellcheck="false" placeholder="粘贴节点列表链接，如 https://bestcf.pages.dev/wetest/ipv4.txt">
         <button type="button" id="url-preview" class="btn-outline">预览</button>
         <button type="button" id="url-append" class="btn-primary">追加</button>
       </div>
@@ -998,23 +1008,24 @@ def render_advices_page(saved, skipped, domain_error="", save_error=False, remov
         <div class="preview-head"><span id="url-preview-title">预览结果</span></div>
         <div class="preview-list" id="url-preview-list"></div>
       </div>
-      <textarea name="addresses" placeholder="1.2.3.4:443#JP">__ADDRESS_TEXT__</textarea>
-      <div id="format-check" style="display:none; margin-top:8px;"></div>
+      <textarea name="addresses" placeholder="1.2.3.4:443#JP&#10;2.3.4.5:443#US">__ADDRESS_TEXT__</textarea>
+      <div class="check-box" id="format-check" style="display:none;"></div>
     </fieldset>
     <fieldset>
       <legend>自动更新</legend>
       <div class="modes">
         <label><input type="checkbox" name="auto_update" value="1"__AUTO_UPDATE_CHECKED__> 启用自动更新</label>
       </div>
+      <p class="hint">开启后，后台将定时从已记录的节点链接拉取最新节点并合并保存；手动添加的单行节点不会被覆盖。</p>
       <label class="field-label" for="update-interval">刷新间隔（分钟）</label>
       <input id="update-interval" type="number" name="update_interval" min="1" value="__UPDATE_INTERVAL__">
-      <div class="source-list" id="source-list" style="margin-top:12px;">
+      <div class="source-list" id="source-list">
         __SOURCES_HTML__
       </div>
     </fieldset>
     <div class="actions">
       <button type="submit" class="btn-primary">保存设置</button>
-      <a class="btn-primary" href="/__SUBLINK_PATH__" style="background:var(--accent); text-align:center;">订阅链接</a>
+      <a class="btn-primary" href="/__SUBLINK_PATH__">订阅链接</a>
     </div>
     <script>
     (function(){
