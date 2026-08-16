@@ -175,10 +175,46 @@ get_backend_port() {
     fi
 }
 
+# 获取已配置的站点与端口信息 (每行格式: domain:port)
+get_configured_sites_info() {
+    if [ -f "$CADDY_FILE" ]; then
+        python3 -c "
+import re
+try:
+    with open('$CADDY_FILE', 'r') as f:
+        content = f.read()
+    matches = re.findall(r'https?://([A-Za-z0-9.-]+)(?::([0-9]+))?\s*\{', content)
+    for d, p in matches:
+        print(f'{d}:{p if p else 443}')
+except Exception:
+    pass
+"
+    fi
+}
+
 # 获取当前所有已配置的域名列表
 get_configured_domains() {
     if [ -f "$CADDY_FILE" ]; then
         grep -E "^https?://" "$CADDY_FILE" | awk '{print $1}' | sed 's|https://||g; s|http://||g; s|{||g; s|}||g'
+    fi
+}
+
+# 获取当前所有对外监听端口汇总（例如 443, 8443）
+get_listen_ports_summary() {
+    if [ -f "$CADDY_FILE" ]; then
+        python3 -c "
+import re
+try:
+    with open('$CADDY_FILE', 'r') as f:
+        content = f.read()
+    matches = re.findall(r'https?://[A-Za-z0-9.-]+(?::([0-9]+))?\s*\{', content)
+    ports = sorted(list(set([p if p else '443' for p in matches])), key=lambda x: int(x) if x.isdigit() else 0)
+    print(', '.join(ports) if ports else '443 (默认)')
+except Exception:
+    print('443')
+"
+    else
+        echo "443"
     fi
 }
 
@@ -214,28 +250,239 @@ reload_caddy() {
 # 模块 1：Caddy 端口与流量转发配置 (对外监听 + 对内转发)
 # ==============================================================================
 configure_ports_and_proxy() {
+    while true; do
+        clear
+        echo -e "${CYAN}====================================================${PLAIN}"
+        echo -e "${CYAN}    1. Caddy 端口配置与流量转发 (对内/对外)          ${PLAIN}"
+        echo -e "${CYAN}====================================================${PLAIN}"
+
+        local current_backend=$(get_backend_port)
+        echo -e "【当前对内转发端口 (Backend Port)】: ${GREEN}${current_backend}${PLAIN} (h2c 转发至 127.0.0.1:${current_backend})"
+
+        echo -e "\n【当前对外监听域名与端口列表 (Frontend Listen Ports)】:"
+        local site_list=($(get_configured_sites_info))
+        if [ ${#site_list[@]} -eq 0 ]; then
+            echo -e "  ${YELLOW}(暂无配置域名与对外监听端口，请在模块 2 中添加域名)${PLAIN}"
+        else
+            for idx in "${!site_list[@]}"; do
+                local s_dom=$(echo "${site_list[$idx]}" | awk -F':' '{print $1}')
+                local s_port=$(echo "${site_list[$idx]}" | awk -F':' '{print $2}')
+                if [ "$s_port" = "443" ]; then
+                    echo -e "  [${GREEN}$((idx+1))${PLAIN}] ${CYAN}${s_dom}${PLAIN} -> 对外监听端口: ${GREEN}${s_port}${PLAIN} (标准 HTTPS 端口)"
+                else
+                    echo -e "  [${GREEN}$((idx+1))${PLAIN}] ${CYAN}${s_dom}${PLAIN} -> 对外监听端口: ${YELLOW}${s_port}${PLAIN} (自定义 / NAT 映射端口)"
+                fi
+            done
+        fi
+        echo -e "----------------------------------------------------"
+        echo -e " ${GREEN}1.${PLAIN} 修改单个域名的【对外监听端口】"
+        echo -e " ${GREEN}2.${PLAIN} 批量修改所有域名的【对外监听端口】"
+        echo -e " ${GREEN}3.${PLAIN} 修改核心【对内转发端口】 (127.0.0.1 本地代理端口)"
+        echo -e " ${GREEN}4.${PLAIN} 查看当前系统端口监听状态 (ss / lsof)"
+        echo -e " ${BLUE}0.${PLAIN} 返回主菜单"
+        echo -e "===================================================="
+        read -rp "请输入选项 [0-4]: " port_choice
+
+        case "$port_choice" in
+            1)
+                modify_single_domain_port
+                ;;
+            2)
+                modify_all_domains_port
+                ;;
+            3)
+                modify_backend_port
+                ;;
+            4)
+                view_listening_ports
+                ;;
+            0)
+                break
+                ;;
+            *)
+                echo -e "${RED}输入无效，请重新输入！${PLAIN}"
+                sleep 1
+                ;;
+        esac
+    done
+}
+
+# 1.1 修改单个域名的对外监听端口
+modify_single_domain_port() {
     clear
-    echo -e "${CYAN}====================================================${PLAIN}"
-    echo -e "${CYAN}    1. Caddy 端口配置与流量转发 (对内/对外)          ${PLAIN}"
-    echo -e "${CYAN}====================================================${PLAIN}"
+    echo -e "${CYAN}>>> 修改单个域名的对外监听端口${PLAIN}"
+    local site_list=($(get_configured_sites_info))
+    if [ ${#site_list[@]} -eq 0 ]; then
+        echo -e "${YELLOW}当前没有任何配置的域名，请先在模块 2 中添加域名！${PLAIN}"
+        read -rp "按回车键返回..."
+        return
+    fi
 
+    echo -e "当前已配置的域名列表："
+    for idx in "${!site_list[@]}"; do
+        local s_dom=$(echo "${site_list[$idx]}" | awk -F':' '{print $1}')
+        local s_port=$(echo "${site_list[$idx]}" | awk -F':' '{print $2}')
+        echo -e "  [${GREEN}$((idx+1))${PLAIN}] ${s_dom} (当前对外监听端口: ${GREEN}${s_port}${PLAIN})"
+    done
+    echo -e "  [${RED}0${PLAIN}] 返回上级"
+    echo -e "----------------------------------------------------"
+    read -rp "请选择要修改端口的域名序号 [0-${#site_list[@]}]: " sel_idx
+    if [ "$sel_idx" = "0" ] || [ -z "$sel_idx" ]; then
+        return
+    fi
+    if ! [[ "$sel_idx" =~ ^[0-9]+$ ]] || [ "$sel_idx" -lt 1 ] || [ "$sel_idx" -gt "${#site_list[@]}" ]; then
+        echo -e "${RED}输入序号无效！${PLAIN}"
+        sleep 1
+        return
+    fi
+
+    local selected_entry="${site_list[$((sel_idx-1))]}"
+    local target_domain=$(echo "$selected_entry" | awk -F':' '{print $1}')
+    local old_port=$(echo "$selected_entry" | awk -F':' '{print $2}')
+
+    echo -e "\n当前所选域名: ${CYAN}${target_domain}${PLAIN} (原监听端口: ${old_port})"
+    read -rp "请输入新的【对外监听端口】(回车默认 443，NAT VPS 请输入高位端口如 8443, 15362): " new_port
+    new_port=${new_port:-443}
+
+    if ! [[ "$new_port" =~ ^[0-9]+$ ]] || [ "$new_port" -lt 1 ] || [ "$new_port" -gt 65535 ]; then
+        echo -e "${RED}端口必须为 1-65535 之间的有效数字！${PLAIN}"
+        read -rp "按回车键返回..."
+        return
+    fi
+
+    python3 -c "
+import re
+target = '$target_domain'
+new_p = '$new_port'
+cfile = '$CADDY_FILE'
+try:
+    with open(cfile, 'r') as f:
+        content = f.read()
+    pattern = r'(https?://' + re.escape(target) + r')(?::[0-9]+)?(\s*\{)'
+    if str(new_p) == '443':
+        replacement = r'\1\2'
+    else:
+        replacement = r'\1:' + str(new_p) + r'\2'
+    new_content = re.sub(pattern, replacement, content)
+    with open(cfile, 'w') as f:
+        f.write(new_content)
+    print('OK')
+except Exception as e:
+    print('ERROR:', e)
+"
+    reload_caddy
+    echo -e "${GREEN}✔ 域名 [${target_domain}] 的对外监听端口已成功修改为：${new_port}${PLAIN}"
+    read -rp "按回车键继续..."
+}
+
+# 1.2 批量修改所有域名的对外监听端口
+modify_all_domains_port() {
+    clear
+    echo -e "${CYAN}>>> 批量修改所有域名的对外监听端口${PLAIN}"
+    local site_list=($(get_configured_sites_info))
+    if [ ${#site_list[@]} -eq 0 ]; then
+        echo -e "${YELLOW}当前没有任何配置的域名！${PLAIN}"
+        read -rp "按回车键返回..."
+        return
+    fi
+
+    echo -e "将批量修改以下 ${#site_list[@]} 个域名的对外监听端口："
+    for s in "${site_list[@]}"; do
+        echo -e "  • ${s}"
+    done
+    echo -e "----------------------------------------------------"
+    read -rp "请输入统一的【对外监听端口】(回车默认 443，NAT VPS 请输入如 8443, 15362): " new_port
+    new_port=${new_port:-443}
+
+    if ! [[ "$new_port" =~ ^[0-9]+$ ]] || [ "$new_port" -lt 1 ] || [ "$new_port" -gt 65535 ]; then
+        echo -e "${RED}端口必须为 1-65535 之间的有效数字！${PLAIN}"
+        read -rp "按回车键返回..."
+        return
+    fi
+
+    python3 -c "
+import re
+new_p = '$new_port'
+cfile = '$CADDY_FILE'
+try:
+    with open(cfile, 'r') as f:
+        content = f.read()
+    def repl(m):
+        prefix = m.group(1)
+        domain = m.group(2)
+        suffix = m.group(3)
+        if str(new_p) == '443':
+            return f'{prefix}{domain}{suffix}'
+        else:
+            return f'{prefix}{domain}:{new_p}{suffix}'
+    new_content = re.sub(r'(https?://)([A-Za-z0-9.-]+)(?::[0-9]+)?(\s*\{)', repl, content)
+    with open(cfile, 'w') as f:
+        f.write(new_content)
+    print('OK')
+except Exception as e:
+    print('ERROR:', e)
+"
+    reload_caddy
+    echo -e "${GREEN}✔ 所有已配置域名的对外监听端口已统一更新为：${new_port}${PLAIN}"
+    read -rp "按回车键继续..."
+}
+
+# 1.3 修改核心对内转发端口
+modify_backend_port() {
+    clear
+    echo -e "${CYAN}>>> 修改核心对内转发端口 (Backend Port)${PLAIN}"
     local current_backend=$(get_backend_port)
-    echo -e "当前【对内转发端口 (Backend Port)】: ${GREEN}${current_backend}${PLAIN}"
-
-    echo -e "\n${YELLOW}说明：${PLAIN}"
-    echo -e "• 【对外监听端口】：客户端连接所用的端口（标准为 443，NAT VPS 回源端口如 8443、15362 等）。"
-    echo -e "• 【对内转发端口】：本地代理程序 (app.py) 监听的内部端口（默认为 3000）。\n"
+    echo -e "当前【对内转发端口】: ${GREEN}${current_backend}${PLAIN} (Caddy 将流量 h2c 转发至 127.0.0.1:${current_backend})"
+    echo -e "说明：此端口应与本地代理服务 (app.py) 的监听端口保持一致（默认为 3000）。\n"
 
     read -rp "请输入新的【对内转发端口】(直接回车保持 ${current_backend}): " new_backend
     new_backend=${new_backend:-$current_backend}
 
-    if [ "$new_backend" != "$current_backend" ]; then
-        sed -i -E "s/reverse_proxy 127.0.0.1:[0-9]+/reverse_proxy 127.0.0.1:${new_backend}/g" "$CADDY_FILE"
-        echo -e "${GREEN}✔ 已将对内转发端口更新为：${new_backend}${PLAIN}"
+    if ! [[ "$new_backend" =~ ^[0-9]+$ ]] || [ "$new_backend" -lt 1 ] || [ "$new_backend" -gt 65535 ]; then
+        echo -e "${RED}端口必须为 1-65535 之间的有效数字！${PLAIN}"
+        read -rp "按回车键返回..."
+        return
     fi
 
-    echo -e "\n${GREEN}✔ 核心流量转发规则已配置完成 (原生支持 h2c 转发)${PLAIN}"
-    read -rp "按回车键返回主菜单..."
+    if [ "$new_backend" != "$current_backend" ]; then
+        python3 -c "
+import re
+new_b = '$new_backend'
+cfile = '$CADDY_FILE'
+try:
+    with open(cfile, 'r') as f:
+        content = f.read()
+    new_content = re.sub(r'reverse_proxy 127\.0\.0\.1:[0-9]+', f'reverse_proxy 127.0.0.1:{new_b}', content)
+    with open(cfile, 'w') as f:
+        f.write(new_content)
+    print('OK')
+except Exception as e:
+    print('ERROR:', e)
+"
+        reload_caddy
+        echo -e "${GREEN}✔ 已将对内转发端口更新为：${new_backend}${PLAIN}"
+        echo -e "${YELLOW}提示：如果 Magic Toys 代理服务正在运行，请前往【模块 3】重新配置/更新服务的 PORT 参数以保持一致。${PLAIN}"
+    else
+        echo -e "${YELLOW}端口未做变更。${PLAIN}"
+    fi
+    read -rp "按回车键继续..."
+}
+
+# 1.4 查看当前系统端口监听状态
+view_listening_ports() {
+    clear
+    echo -e "${CYAN}====================================================${PLAIN}"
+    echo -e "${CYAN}    当前系统端口监听状态 (Caddy & 代理服务)        ${PLAIN}"
+    echo -e "${CYAN}====================================================${PLAIN}"
+    if command -v ss &>/dev/null; then
+        ss -tulpn | grep -E 'caddy|python|3000|443|80|Netid' || ss -tulpn
+    elif command -v netstat &>/dev/null; then
+        netstat -tulpn | grep -E 'caddy|python|3000|443|80|Proto' || netstat -tulpn
+    elif command -v lsof &>/dev/null; then
+        lsof -i -P -n | grep -E 'caddy|python' || lsof -i -P -n
+    fi
+    echo -e "===================================================="
+    read -rp "按回车键继续..."
 }
 
 # ==============================================================================
@@ -874,7 +1121,10 @@ main_menu() {
         echo -e "${GREEN}        Magic Toys · 一键管理向导                   ${PLAIN}"
         echo -e "${YELLOW}       (随时输入 ${GREEN}toy${YELLOW} 即可再次唤醒本向导)          ${PLAIN}"
         echo -e "${CYAN}====================================================${PLAIN}"
-        echo -e "当前对内转发端口: ${GREEN}$(get_backend_port)${PLAIN} (h2c 转发至 127.0.0.1)"
+        local backend_p=$(get_backend_port)
+        local listen_ports=$(get_listen_ports_summary)
+        echo -e "当前对外监听端口: ${GREEN}${listen_ports}${PLAIN} (公网 HTTPS 接入端口)"
+        echo -e "当前对内转发端口: ${GREEN}${backend_p}${PLAIN} (h2c 转发至 127.0.0.1:${backend_p})"
         echo -e "当前已配域名数量: ${GREEN}$(get_configured_domains | wc -w)${PLAIN}"
         echo -e "代理服务运行状态: $(get_app_service_status)"
         echo -e "----------------------------------------------------"
