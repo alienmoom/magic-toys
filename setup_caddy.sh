@@ -245,6 +245,27 @@ except Exception:
     fi
 }
 
+# 获取当前 Caddy 统一监听端口 (若配置了自定义端口则返回该端口，默认 443)
+get_caddy_listen_port() {
+    if [ -f "$CADDY_FILE" ]; then
+        python3 -c "
+import re
+try:
+    with open('$CADDY_FILE', 'r') as f:
+        content = f.read()
+    match = re.search(r'https?://[A-Za-z0-9.-]+:([0-9]+)\s*\{', content)
+    if match:
+        print(match.group(1))
+    else:
+        print('443')
+except Exception:
+    print('443')
+"
+    else
+        echo "443"
+    fi
+}
+
 # 获取代理服务运行状态
 get_app_service_status() {
     if systemctl is-active --quiet magic-toys 2>/dev/null; then
@@ -482,8 +503,7 @@ add_domain_cf_token() {
         return
     fi
 
-    read -rp "请输入对外监听端口 (回车默认 443，NAT VPS 请输入高位映射端口如 8443): " port
-    port=${port:-443}
+    local port=$(get_caddy_listen_port)
 
     read -rp "请输入【Cloudflare DNS API Token】: " cf_token
     if [ -z "$cf_token" ]; then
@@ -527,7 +547,11 @@ EOF
     fi
 
     reload_caddy
-    echo -e "${GREEN}✔ 域名 https://${domain}:${port} (Cloudflare DNS-01) 已成功添加！${PLAIN}"
+    if [ "$port" = "443" ]; then
+        echo -e "${GREEN}✔ 域名 https://${domain} (Cloudflare DNS-01) 已成功添加并生效！${PLAIN}"
+    else
+        echo -e "${GREEN}✔ 域名 https://${domain}:${port} (Cloudflare DNS-01) 已成功添加并生效 (自动跟随当前 Caddy 监听端口 ${port})！${PLAIN}"
+    fi
     read -rp "按回车键继续..."
 }
 
@@ -544,8 +568,7 @@ add_domain_http80() {
         return
     fi
 
-    read -rp "请输入对外监听端口 (回车默认 443): " port
-    port=${port:-443}
+    local port=$(get_caddy_listen_port)
 
     remove_domain_from_caddyfile "$domain"
 
@@ -568,7 +591,11 @@ EOF
     fi
 
     reload_caddy
-    echo -e "${GREEN}✔ 域名 https://${domain}:${port} (HTTP-01 自动申请) 已成功添加！${PLAIN}"
+    if [ "$port" = "443" ]; then
+        echo -e "${GREEN}✔ 域名 https://${domain} (HTTP-01 自动申请) 已成功添加！${PLAIN}"
+    else
+        echo -e "${GREEN}✔ 域名 https://${domain}:${port} (HTTP-01 自动申请) 已成功添加 (自动跟随当前 Caddy 监听端口 ${port})！${PLAIN}"
+    fi
     read -rp "按回车键继续..."
 }
 
@@ -585,8 +612,7 @@ add_domain_self_signed() {
         return
     fi
 
-    read -rp "请输入对外监听端口 (回车默认 443，NAT VPS 如 8443/15362): " port
-    port=${port:-443}
+    local port=$(get_caddy_listen_port)
 
     remove_domain_from_caddyfile "$domain"
 
@@ -611,7 +637,11 @@ EOF
     fi
 
     reload_caddy
-    echo -e "${GREEN}✔ 域名 https://${domain}:${port} (自签证书 tls internal) 已成功添加！${PLAIN}"
+    if [ "$port" = "443" ]; then
+        echo -e "${GREEN}✔ 域名 https://${domain} (自签证书 tls internal) 已成功添加！${PLAIN}"
+    else
+        echo -e "${GREEN}✔ 域名 https://${domain}:${port} (自签证书 tls internal) 已成功添加 (自动跟随当前 Caddy 监听端口 ${port})！${PLAIN}"
+    fi
     read -rp "按回车键继续..."
 }
 
