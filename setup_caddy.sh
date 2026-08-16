@@ -1024,7 +1024,10 @@ main_menu() {
         echo -e "${GREEN}        Magic Toys · 一键管理向导                   ${PLAIN}"
         echo -e "${YELLOW}       (随时输入 ${GREEN}toy${YELLOW} 即可再次唤醒本向导)          ${PLAIN}"
         echo -e "${CYAN}====================================================${PLAIN}"
-        echo -e "当前对内转发端口: ${GREEN}$(get_backend_port)${PLAIN} (h2c 转发至 127.0.0.1)"
+        local current_listen=$(get_listen_ports_summary)
+        local current_backend=$(get_backend_port)
+        echo -e "Caddy当前监听端口: ${GREEN}${current_listen}${PLAIN}"
+        echo -e "当前内部转发端口: ${GREEN}${current_backend}${PLAIN} (h2c 转发至 127.0.0.1:${current_backend})"
         echo -e "当前已配域名数量: ${GREEN}$(get_configured_domains | wc -w)${PLAIN}"
         echo -e "代理服务运行状态: $(get_app_service_status)"
         echo -e "----------------------------------------------------"
