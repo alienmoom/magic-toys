@@ -801,18 +801,11 @@ def render_advices_page(saved, skipped, domain_error="", save_error=False, remov
     node_name_text = escape_html(node_name)
     direct_domain_text = escape_html(direct_domain)
     gateway_domain_text = escape_html(gateway_domain)
-    # 直连域名安全连接开关：443（含纯域名默认）锁定开启；其他端口按配置。
+    # 直连域名证书校验开关：默认开启；由用户根据域名证书情况（ACME/自签）自由配置。
     direct_tls_cfg = cfg.get("directDomainTls")
-    direct_domain_parsed = parse_domain_input(direct_domain)
-    direct_domain_port = direct_domain_parsed["port"] if direct_domain_parsed and direct_domain_parsed["ok"] else 443
-    direct_domain_locked = bool(direct_domain_parsed and direct_domain_parsed["ok"]
-                                and not direct_domain_parsed["empty"] and direct_domain_port == 443)
-    if direct_tls_cfg is None:
-        direct_tls_checked = True if (not direct_domain or direct_domain_port == 443) else False
-    else:
-        direct_tls_checked = bool(direct_tls_cfg)
+    direct_tls_checked = True if direct_tls_cfg is None else bool(direct_tls_cfg)
     direct_tls_checked_attr = " checked" if direct_tls_checked else ""
-    direct_tls_disabled_attr = " disabled" if direct_domain_locked else ""
+    direct_tls_disabled_attr = ""
     auto_update_cfg = cfg.get("autoUpdate") or {}
     auto_update_checked = " checked" if auto_update_cfg.get("enabled") else ""
     update_interval_text = str(auto_update_cfg.get("intervalMinutes") or 720)
@@ -989,9 +982,9 @@ def render_advices_page(saved, skipped, domain_error="", save_error=False, remov
       <input id="direct-domain" type="text" name="direct_domain" value="__DIRECT_DOMAIN_TEXT__" spellcheck="false" placeholder="可选，如 your-domain.com">
       <label class="tls-toggle" id="direct-tls-wrap" for="direct-tls">
         <input type="checkbox" id="direct-tls" name="direct_domain_tls" value="1"__DIRECT_TLS_CHECKED____DIRECT_TLS_DISABLED__>
-        <span>安全连接（该域名存在acme证书则打开，否则关闭）</span>
+        <span>证书校验（该域名存在acme证书则启用证书校验，否则关闭）</span>
       </label>
-      <p class="hint">格式：your.domain.com/your.domain.com:4321。只填域名默认端口443，默认启用安全连接。</p>
+      <p class="hint">格式：your.domain.com/your.domain.com:4321。只填域名默认端口443，默认启用证书校验。</p>
       <label class="field-label" for="gateway-domain">套CDN域名</label>
       <input id="gateway-domain" type="text" name="gateway_domain" value="__GATEWAY_DOMAIN_TEXT__" spellcheck="false" placeholder="可选，如 cdn.example.com">
     </fieldset>
@@ -1035,28 +1028,6 @@ def render_advices_page(saved, skipped, domain_error="", save_error=False, remov
       var directInput = document.getElementById("direct-domain");
       var directTls = document.getElementById("direct-tls");
       var directTlsWrap = document.getElementById("direct-tls-wrap");
-      if (directInput && directTls && directTlsWrap) {
-        var directTlsSync = function(){
-          var v = String(directInput.value || "").trim();
-          var port = 443;
-          var m = v.match(/^\[([^\[\]]+)\]:([0-9]{1,5})$/);
-          if (m) { port = parseInt(m[2], 10); }
-          else {
-            m = v.match(/^([A-Za-z0-9][A-Za-z0-9._-]*):([0-9]{1,5})$/);
-            if (m) { port = parseInt(m[2], 10); }
-          }
-          if (port === 443) {
-            directTls.checked = true;
-            directTls.disabled = true;
-            directTlsWrap.classList.add("locked");
-          } else {
-            directTls.disabled = false;
-            directTlsWrap.classList.remove("locked");
-          }
-        };
-        directInput.addEventListener("input", directTlsSync);
-        directTlsSync();
-      }
       var parseLine = function(s){
         var line = String(s || "").trim();
         if (!line) return null;
@@ -1358,18 +1329,17 @@ def get_link_configs():
         p = parse_domain_input(direct_domain)
         host = p["host"] if p and p["ok"] else direct_domain
         port = p["port"] if p and p["ok"] else 443
-        # 直连域名安全连接：显式配置 directDomainTls 优先（前端开关）；
-        # 未显式配置时按端口判断（443/8443 等标准 TLS 端口默认安全连接）。
+        # 直连域名证书校验开关：
+        # 若 directDomainTls 为 False（关闭证书校验，如使用自签证书 tls internal），
+        # 仍使用 TLS（因为 Caddy 监听 HTTPS），并在节点链接中附加 allowInsecure=1；
+        # 若 directDomainTls 为 True（开启证书校验，如使用 ACME 证书），使用标准 TLS 校验。
         direct_tls = cfg.get("directDomainTls")
-        if direct_tls is None:
-            tls_ports = {"443", "8443", "2096", "2087", "2083", "2053"}
-            use_tls = str(port) in tls_ports
-        else:
-            use_tls = bool(direct_tls)
+        tls_verify = True if direct_tls is None else bool(direct_tls)
         configs.append({
             "address": host,
             "tlsDomain": host,
-            "tls": use_tls,
+            "tls": True,
+            "allowInsecure": not tls_verify,
             "port": port,
             "label": "直连",
             "excluded": set(),
@@ -1418,7 +1388,8 @@ def build_link_list(config, name_part, modes=None, node_name=None):
     eff_name = (node_name if node_name is not None
                 else ((get_advices_config().get("name") if get_advices_config() else None) or NAME or "")).strip()
     link_name = f"{eff_name}-{config['label']}-{name_part}" if eff_name else f"{config['label']}-{name_part}"
-    tls_param = "tls" if config["tls"] else "none"
+    tls_param = "tls" if config.get("tls", True) else "none"
+    allow_insecure = bool(config.get("allowInsecure"))
     excluded = set(config.get("excluded") or [])
     urls = []
     for proto in ("a", "b", "c"):
@@ -1442,7 +1413,8 @@ def build_link_list(config, name_part, modes=None, node_name=None):
                     "v2ray-plugin;mode=websocket"
                     f";host={config['tlsDomain']}"
                     f";path=/{API_PATH}?enc={ss_method}"
-                    + (";tls" if config["tls"] else "")
+                    + (";tls" if config.get("tls", True) else "")
+                    + (";skip-cert-verify" if allow_insecure else "")
                     + ";mux=0"
                 )
                 urls.append(
@@ -1492,6 +1464,8 @@ def build_link_list(config, name_part, modes=None, node_name=None):
                 f"host={config['tlsDomain']}",
                 path_param,
             ]
+            if allow_insecure:
+                query.append("allowInsecure=1")
             urls.append(f"{base}?{'&'.join(query)}#{link_name}")
     return urls
 
@@ -1519,10 +1493,11 @@ def build_singbox_json(configs, name_part, modes=None, node_name=None):
                 link_name = f"{eff_name}-{config['label']}-{name_part}" if eff_name else f"{config['label']}-{name_part}"
             
             tls_obj = None
-            if config["tls"]:
+            if config.get("tls", True):
                 tls_obj = {
                     "enabled": True,
                     "server_name": config["tlsDomain"],
+                    "insecure": bool(config.get("allowInsecure")),
                     "utls": {
                         "enabled": True,
                         "fingerprint": "chrome"
@@ -1965,13 +1940,9 @@ async def _handle_advices(req):
             location = f"/{SETTINGS_PATH}?domain_error=" + urllib.parse.quote(";".join(domain_errors))
             await send_simple(req.writer, 302, "Found", [("Location", location)], b"")
             return
-        # 直连域名安全连接开关：只填域名或端口 443 时强制安全连接（前端锁定），
-        # 其余端口由用户手动决定是否已有证书。
+        # 直连域名证书校验开关：由表单提交的 direct_domain_tls 决定
         direct_domain_tls_raw = (params.get("direct_domain_tls", [""])[0] or "").strip()
-        if pd["ok"] and not pd["empty"]:
-            direct_domain_tls = True if pd["port"] == 443 else (direct_domain_tls_raw == "1")
-        else:
-            direct_domain_tls = True
+        direct_domain_tls = (direct_domain_tls_raw == "1")
         auto_update_enabled = checked("auto_update")
         try:
             interval_minutes = int((params.get("update_interval", [""])[0] or "").strip() or 720)
