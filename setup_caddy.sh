@@ -57,7 +57,6 @@ ensure_caddy_installed() {
             echo -e "${RED}[错误] 不支持的 Linux 发行版，请手动安装 Caddy！${PLAIN}"
             exit 1
         fi
-        systemctl enable caddy
     fi
     mkdir -p "$CONF_DIR"
     ensure_base_caddyfile
@@ -285,7 +284,6 @@ reload_caddy() {
     fi
     if caddy validate --config "$CADDY_FILE"; then
         systemctl daemon-reload
-        systemctl enable --now caddy
         systemctl restart caddy
         echo -e "${GREEN}✔ Caddy 配置已平滑重启生效！${PLAIN}"
     else
@@ -836,7 +834,6 @@ WantedBy=multi-user.target
 EOF
 
     systemctl daemon-reload
-    systemctl enable --now magic-toys
     systemctl restart magic-toys
 
     # 确保 Caddy 的内部转发端口与代理服务端口一致
