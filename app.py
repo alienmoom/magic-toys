@@ -1198,9 +1198,18 @@ def render_advices_page(saved, skipped, domain_error="", save_error=False, remov
         ta.form.submit();
       };
       var doAppend = function(){
+        // 如果用户已点击预览，直接追加当前预览列表中的节点（保留用户在预览中删除筛选的结果），无需重复抓取
+        if (previewedUrl) {
+          if (!previewed.length) {
+            setMsg("预览中的节点已全部删除，无可追加节点", false);
+            return;
+          }
+          submitMerged(previewed, previewedUrl);
+          return;
+        }
         var u = String(urlInput.value || "").trim();
         if (/^https?:\/\//i.test(u)) {
-          // 直接追加链接：先校验链接有效性，有效则追加节点并保存
+          // 未预览时直接追加链接：校验有效性并抓取追加
           urlMsg.textContent = "正在校验链接并抓取节点…";
           urlMsg.className = "url-msg";
           var fd = new URLSearchParams();
@@ -1218,9 +1227,16 @@ def render_advices_page(saved, skipped, domain_error="", save_error=False, remov
             .catch(function(){ setMsg("无效链接或无法访问", false); });
           return;
         }
-        if (!previewed.length) { setMsg("请输入节点链接，或先点击预览", false); return; }
-        submitMerged(previewed, previewedUrl);
+        setMsg("请输入节点链接，或先点击预览", false);
       };
+      urlInput.addEventListener("input", function(){
+        if (previewedUrl && String(urlInput.value || "").trim() !== previewedUrl) {
+          previewed = [];
+          previewedUrl = "";
+          renderPreview();
+          updatePreviewButton();
+        }
+      });
       previewBtn.addEventListener("click", doPreview);
       document.getElementById("url-append").addEventListener("click", doAppend);
       document.querySelectorAll(".source-remove").forEach(function(btn){
