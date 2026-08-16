@@ -989,9 +989,9 @@ def render_advices_page(saved, skipped, domain_error="", save_error=False, remov
       <input id="direct-domain" type="text" name="direct_domain" value="__DIRECT_DOMAIN_TEXT__" spellcheck="false" placeholder="可选，如 your-domain.com">
       <label class="tls-toggle" id="direct-tls-wrap" for="direct-tls">
         <input type="checkbox" id="direct-tls" name="direct_domain_tls" value="1"__DIRECT_TLS_CHECKED____DIRECT_TLS_DISABLED__>
-        <span>安全连接（该域名已有证书）</span>
+        <span>安全连接（该域名存在acme证书则打开，否则关闭）</span>
       </label>
-      <p class="hint">只填域名或端口为 443 时默认使用安全连接（不可关闭）；填写其他端口时请手动勾选该域名是否已有证书。</p>
+      <p class="hint">格式：your.domain.com/your.domain.com:4321。只填域名默认端口443，默认启用安全连接。</p>
       <label class="field-label" for="gateway-domain">套CDN域名</label>
       <input id="gateway-domain" type="text" name="gateway_domain" value="__GATEWAY_DOMAIN_TEXT__" spellcheck="false" placeholder="可选，如 cdn.example.com">
     </fieldset>
