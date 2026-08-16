@@ -1414,7 +1414,6 @@ def build_link_list(config, name_part, modes=None, node_name=None):
                     f";host={config['tlsDomain']}"
                     f";path=/{API_PATH}?enc={ss_method}"
                     + (";tls" if config.get("tls", True) else "")
-                    + (";skip-cert-verify" if allow_insecure else "")
                     + ";mux=0"
                 )
                 urls.append(
