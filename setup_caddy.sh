@@ -45,7 +45,7 @@ ensure_caddy_installed() {
     if ! command -v caddy &> /dev/null; then
         echo -e "${YELLOW}>>> 未检测到 Caddy，正在为您自动安装...${PLAIN}"
         if command -v apt &> /dev/null; then
-            apt update && apt install -y debian-keyring debian-archive-keyring apt-transport-https curl sudo
+            apt update && apt install -y debian-keyring debian-archive-keyring apt-transport-https curl sudo gpg gnupg
             curl -1sLf 'https://dl.cloudsmith.io/public/caddy/stable/gpg.key' | gpg --dearmor --yes -o /usr/share/keyrings/caddy-stable-archive-keyring.gpg
             curl -1sLf 'https://dl.cloudsmith.io/public/caddy/stable/debian.deb.txt' | tee /etc/apt/sources.list.d/caddy-stable.list
             apt update && apt install -y caddy
@@ -65,20 +65,55 @@ ensure_caddy_installed() {
 
 # 安装包含 Cloudflare DNS 插件的 Caddy
 install_caddy_cf_plugin() {
-    echo -e "${CYAN}>>> 正在准备/编译集成 Cloudflare DNS 插件的 Caddy 二进制...${PLAIN}"
-    if command -v apt &> /dev/null; then
-        apt update && apt install -y golang-go curl git
-    elif command -v dnf &> /dev/null; then
-        dnf install -y golang curl git
+    if command -v caddy &> /dev/null && caddy list-modules 2>/dev/null | grep -q "dns.providers.cloudflare"; then
+        echo -e "${GREEN}✔ 检测到 Caddy 已集成 Cloudflare DNS 插件，跳过安装。${PLAIN}"
+        return 0
     fi
-    if ! command -v xcaddy &> /dev/null; then
-        go install github.com/caddyserver/xcaddy/cmd/xcaddy@latest
-        export PATH=$PATH:$(go env GOPATH)/bin:/root/go/bin
+
+    echo -e "${CYAN}>>> 正在准备集成 Cloudflare DNS 插件的 Caddy 二进制...${PLAIN}"
+    local arch="$(uname -m)"
+    local caddy_arch="amd64"
+    case "$arch" in
+        x86_64) caddy_arch="amd64" ;;
+        aarch64|arm64) caddy_arch="arm64" ;;
+        armv7l) caddy_arch="armv7" ;;
+        s390x) caddy_arch="s390x" ;;
+        riscv64) caddy_arch="riscv64" ;;
+        *) caddy_arch="$arch" ;;
+    esac
+
+    local downloaded=false
+    echo -e "${YELLOW}>>> 正在从 Caddy 官方 API 下载支持 Cloudflare DNS 插件的二进制 (${caddy_arch})...${PLAIN}"
+    if curl -sLf "https://caddyserver.com/api/download?os=linux&arch=${caddy_arch}&p=github.com%2Fcaddy-dns%2Fcloudflare" -o /tmp/caddy_cf; then
+        chmod +x /tmp/caddy_cf
+        if /tmp/caddy_cf list-modules 2>/dev/null | grep -q "dns.providers.cloudflare"; then
+            systemctl stop caddy 2>/dev/null || true
+            cp /tmp/caddy_cf /usr/bin/caddy
+            chmod +x /usr/bin/caddy
+            setcap 'cap_net_bind_service=+ep' /usr/bin/caddy 2>/dev/null || true
+            rm -f /tmp/caddy_cf
+            downloaded=true
+            echo -e "${GREEN}>>> Cloudflare 插件版 Caddy 下载安装完成！${PLAIN}"
+        fi
     fi
-    xcaddy build --with github.com/caddy-dns/cloudflare
-    mv ./caddy /usr/bin/caddy
-    setcap 'cap_net_bind_service=+ep' /usr/bin/caddy
-    echo -e "${GREEN}>>> Cloudflare 插件版 Caddy 编译替换完成！${PLAIN}"
+
+    if [ "$downloaded" = false ]; then
+        echo -e "${YELLOW}>>> 官方预编译 API 下载未完成，尝试使用 xcaddy 进行本地构建...${PLAIN}"
+        if command -v apt &> /dev/null; then
+            apt update && apt install -y golang-go curl git
+        elif command -v dnf &> /dev/null; then
+            dnf install -y golang curl git
+        fi
+        if ! command -v xcaddy &> /dev/null; then
+            go install github.com/caddyserver/xcaddy/cmd/xcaddy@latest
+            export PATH=$PATH:$(go env GOPATH)/bin:/root/go/bin
+        fi
+        xcaddy build --with github.com/caddy-dns/cloudflare
+        systemctl stop caddy 2>/dev/null || true
+        mv ./caddy /usr/bin/caddy
+        setcap 'cap_net_bind_service=+ep' /usr/bin/caddy 2>/dev/null || true
+        echo -e "${GREEN}>>> Cloudflare 插件版 Caddy 编译替换完成！${PLAIN}"
+    fi
 }
 
 # 初始化基础 Caddyfile 架构
@@ -160,12 +195,12 @@ get_app_service_status() {
 
 # 重载 Caddy 服务
 reload_caddy() {
-    echo -e "${YELLOW}>>> 正在验证 Caddyfile 语法并重载服务...${PLAIN}"
+    echo -e "${YELLOW}>>> 正在验证 Caddyfile 语法并重启服务...${PLAIN}"
     if caddy validate --config "$CADDY_FILE"; then
         systemctl daemon-reload
         systemctl enable --now caddy
-        systemctl reload caddy || systemctl restart caddy
-        echo -e "${GREEN}✔ Caddy 配置已平滑重载生效！${PLAIN}"
+        systemctl restart caddy
+        echo -e "${GREEN}✔ Caddy 配置已平滑重启生效！${PLAIN}"
     else
         echo -e "${RED}✖ Caddyfile 语法验证失败，请检查配置文件！${PLAIN}"
     fi
