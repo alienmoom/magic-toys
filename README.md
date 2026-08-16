@@ -43,9 +43,54 @@ curl -fsSL https://raw.githubusercontent.com/alienmoom/magic-toys/main/setup_cad
 
 ---
 
+### 📂 仅允许上传文件部署的平台 (无 Docker / 纯代码运行环境)
+
+适合 Serv00、各类 Python Web Hosting、虚拟主机或仅支持手动上传代码运行的轻量平台：
+
+1. **上传核心文件**：将项目中的核心文件上传至你的平台工作目录：
+   * [`app.py`](file:///c:/Users/Lenovo/Desktop/worker_space/Karing/app.py)（主服务程序）
+   * [`index.html`](file:///c:/Users/Lenovo/Desktop/worker_space/Karing/index.html)（Web 主页与伪装面板）
+   * [`requirements.txt`](file:///c:/Users/Lenovo/Desktop/worker_space/Karing/requirements.txt)（依赖清单）
+2. **安装依赖与启动**：
+   ```bash
+   # 安装依赖
+   pip install -r requirements.txt
+   
+   # 启动服务
+   python app.py
+   # 或
+   python3 app.py
+   ```
+3. **在线配置节点**：
+   服务启动后，直接在浏览器中打开 **`http(s)://yourdomain.com/settings`**（或对应端口/自定义路径）即可在线管理与配置节点信息。
+
+---
+
+### 🐳 Docker 容器平台部署 (Fork 自动构建镜像)
+
+适合 Render、Koyeb、Railway、Hugging Face、Sealos 等支持 Docker 容器镜像部署的 PaaS / Serverless 平台：
+
+1. **Fork 本项目**：点击仓库右上角的 **Fork** 按钮，将本项目复制到你自己的 GitHub 账号下。
+2. **启用 GitHub Actions 构建镜像**：
+   * 进入你 Fork 后的仓库，切换到 **Actions** 选项卡；
+   * 启动对应的构建工作流（如 `Build and Publish Standalone Image` 或 `Build and Publish DB Image`）；
+   * GitHub Actions 将自动为你构建出专属的 Docker 容器镜像并发布到 GitHub Packages (GHCR)。
+3. **在容器平台部署运行**：
+   * 在容器平台新建应用，填入构建好的镜像地址（或直接连接 Fork 的 GitHub 仓库源码构建）；
+   * 部署完成后，通过平台分配的域名访问 **`https://yourdomain.com/settings`** 进行节点可视化配置。
+
+> [!WARNING]
+> **非持久化平台数据丢失警告**：
+> 在无状态（Stateless）或非持久化容器平台（如 Render / Hugging Face / Koyeb 等免费容器实例）上部署时，容器一旦休眠或重启，本地文件（`config.json`）将会被重置。
+> 强烈建议在平台环境变量中配置远程数据库连接（如 `DATABASE_URL=postgres://...` 或 `DATABASE_URL=mysql://...`，配合 `SETTINGS_STORE=database`），对 `/settings` 页面保存的节点配置数据进行持久化保存。
+
+---
+
 ## 📑 目录
 
 - [⚡ VPS 极速一键安装与管理向导 (置顶推荐)](#-vps-极速一键安装与管理向导-置顶推荐)
+  - [📂 仅允许上传文件部署的平台 (无 Docker / 纯代码运行环境)](#-仅允许上传文件部署的平台-无-docker--纯代码运行环境)
+  - [🐳 Docker 容器平台部署 (Fork 自动构建镜像)](#-docker-容器平台部署-fork-自动构建镜像)
 - [🔗 快速访问：订阅链接与设置管理面板](#-快速访问订阅链接与设置管理面板)
 - [功能特性](#-功能特性)
 - [环境变量配置指南 (重点)](#-环境变量配置指南-重点)
