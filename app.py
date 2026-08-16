@@ -1008,6 +1008,8 @@ def render_advices_page(saved, skipped, domain_error="", save_error=False, remov
         <div class="preview-head"><span id="url-preview-title">预览结果</span></div>
         <div class="preview-list" id="url-preview-list"></div>
       </div>
+      <input type="hidden" name="source_url" id="source-url" value="">
+      <input type="hidden" name="source_nodes" id="source-nodes" value="">
       <textarea name="addresses" placeholder="1.2.3.4:443&#10;2.2.2.2:8443#US">__ADDRESS_TEXT__</textarea>
       <div class="check-box" id="format-check"></div>
     </fieldset>
@@ -1185,13 +1187,19 @@ def render_advices_page(saved, skipped, domain_error="", save_error=False, remov
           })
           .catch(function(){ previewed = []; previewedUrl = ""; renderPreview(); updatePreviewButton(); setMsg("无效链接或无法访问", false); });
       };
-      var submitMerged = function(extraNodes){
+      var submitMerged = function(extraNodes, srcUrl){
         var cur = (ta.value || "").split(/\r?\n/).map(function(s){ return s.trim(); }).filter(Boolean);
         var seen = {};
         cur.forEach(function(l){ seen[l] = 1; });
         var added = 0;
         extraNodes.forEach(function(l){ if (!seen[l]) { cur.push(l); seen[l] = 1; added++; } });
         ta.value = cur.join("\n");
+        if (srcUrl) {
+          var srcUrlInput = document.getElementById("source-url");
+          var srcNodesInput = document.getElementById("source-nodes");
+          if (srcUrlInput) srcUrlInput.value = srcUrl;
+          if (srcNodesInput) srcNodesInput.value = JSON.stringify(extraNodes);
+        }
         renderCheck();
         setMsg("已追加 " + added + " 个新节点，正在保存…", true);
         ta.form.submit();
@@ -1203,7 +1211,7 @@ def render_advices_page(saved, skipped, domain_error="", save_error=False, remov
             setMsg("预览中的节点已全部删除，无可追加节点", false);
             return;
           }
-          submitMerged(previewed);
+          submitMerged(previewed, previewedUrl);
           return;
         }
         var u = String(urlInput.value || "").trim();
@@ -1218,7 +1226,7 @@ def render_advices_page(saved, skipped, domain_error="", save_error=False, remov
             .then(function(r){ return r.json(); })
             .then(function(d){
               if (d.ok && d.addresses && d.addresses.length) {
-                submitMerged(d.addresses);
+                submitMerged(d.addresses, u);
               } else {
                 setMsg(d.error || "链接无效或无法访问", false);
               }
@@ -1894,6 +1902,21 @@ async def _handle_advices(req):
         skipped = 0
         url_sources = {}
         has_url_line = False
+
+        # 解析显式由表单传入的来源链接及其最终保留的节点（支持预览删除筛选后精准记录来源）
+        explicit_source_url = (params.get("source_url", [""])[0] or "").strip()
+        explicit_source_nodes_raw = (params.get("source_nodes", [""])[0] or "").strip()
+        if explicit_source_url and (explicit_source_url.startswith("http://") or explicit_source_url.startswith("https://")):
+            explicit_nodes = []
+            if explicit_source_nodes_raw:
+                try:
+                    parsed_nodes = json.loads(explicit_source_nodes_raw)
+                    if isinstance(parsed_nodes, list):
+                        explicit_nodes = [str(n).strip() for n in parsed_nodes if str(n).strip()]
+                except (ValueError, TypeError):
+                    explicit_nodes = []
+            url_sources[explicit_source_url] = {"nodes": explicit_nodes, "lastUpdated": time.time()}
+
         for raw_line in (params.get("addresses", [""])[0]).splitlines():
             line = raw_line.strip()
             if not line:
