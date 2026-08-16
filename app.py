@@ -1427,8 +1427,8 @@ def build_link_list(config, name_part, modes=None, node_name=None):
                 # Karing 对带 host+path 的 HTTP 类传输（ws/xhttp）会完整解析
                 # TLS（server_name/utls），唯独 gRPC 分支只读 serviceName 会丢
                 # server_name（TLS 用 IP 握手导致超时）。这里同时输出
-                # serviceName 与 path（值一致），兼容 Karing/sing-box/Xray/v2rayNG。
-                path_param = f"serviceName={API_PATH}&path=%2F{API_PATH}"
+                # serviceName 与 path（值一致），并附加 mode=gun 和 authority，兼容 Karing/sing-box/Xray/v2rayNG。
+                path_param = f"serviceName={API_PATH}&path=%2F{API_PATH}&mode=gun&authority={config['tlsDomain']}"
             elif conn == "ws":
                 path_param = f"path=%2F{API_PATH}"
             else:
@@ -1481,50 +1481,71 @@ def build_singbox_json(configs, name_part, modes=None, node_name=None):
     for config in configs:
         excluded = set(config.get("excluded") or [])
         active_protos = [p for p in ("a", "b") if proto_modes.get(p) and p not in excluded]
+        active_conns = [c for c in ("ws", "grpc", "xhttp") if conn_modes.get(c)]
         for proto in ("a", "b"):
             if not proto_modes.get(proto) or proto in excluded:
                 continue
-            if not conn_modes.get("grpc"):
-                continue
-            proto_tag = "VLESS" if proto == "a" else "Trojan"
-            if len(active_protos) > 1:
-                link_name = f"{eff_name}-{config['label']}-{proto_tag}-{name_part}" if eff_name else f"{config['label']}-{proto_tag}-{name_part}"
-            else:
-                link_name = f"{eff_name}-{config['label']}-{name_part}" if eff_name else f"{config['label']}-{name_part}"
-            
-            tls_obj = None
-            if config.get("tls", True):
-                tls_obj = {
-                    "enabled": True,
-                    "server_name": config["tlsDomain"],
-                    "insecure": bool(config.get("allowInsecure")),
-                    "utls": {
+            for conn in ("ws", "grpc", "xhttp"):
+                if not conn_modes.get(conn):
+                    continue
+                proto_tag = "VLESS" if proto == "a" else "Trojan"
+                parts = [eff_name] if eff_name else []
+                parts.append(config['label'])
+                if len(active_protos) > 1 or len(active_conns) > 1:
+                    parts.append(proto_tag)
+                if len(active_conns) > 1:
+                    parts.append(conn.upper())
+                parts.append(name_part)
+                link_name = "-".join(parts)
+                
+                tls_obj = None
+                if config.get("tls", True):
+                    tls_obj = {
                         "enabled": True,
-                        "fingerprint": "chrome"
+                        "server_name": config["tlsDomain"],
+                        "insecure": bool(config.get("allowInsecure")),
+                        "utls": {
+                            "enabled": True,
+                            "fingerprint": "chrome"
+                        }
                     }
+                
+                outbound = {
+                    "type": "vless" if proto == "a" else "trojan",
+                    "tag": link_name,
+                    "server": config["address"],
+                    "server_port": int(config["port"]),
                 }
-            
-            outbound = {
-                "type": "vless" if proto == "a" else "trojan",
-                "tag": link_name,
-                "server": config["address"],
-                "server_port": int(config["port"]),
-            }
-            if proto == "a":
-                outbound["uuid"] = APP_KEY
-                outbound["packet_encoding"] = "xudp"
-            else:
-                outbound["password"] = APP_KEY
+                if proto == "a":
+                    outbound["uuid"] = APP_KEY
+                    outbound["packet_encoding"] = "xudp"
+                else:
+                    outbound["password"] = APP_KEY
+                    
+                if tls_obj:
+                    outbound["tls"] = tls_obj
+                    
+                if conn == "grpc":
+                    outbound["transport"] = {
+                        "type": "grpc",
+                        "service_name": API_PATH
+                    }
+                elif conn == "ws":
+                    outbound["transport"] = {
+                        "type": "ws",
+                        "path": f"/{API_PATH}",
+                        "headers": {
+                            "Host": config["tlsDomain"]
+                        }
+                    }
+                elif conn == "xhttp":
+                    outbound["transport"] = {
+                        "type": "http",
+                        "path": f"/{API_PATH}",
+                        "host": [config["tlsDomain"]]
+                    }
+                outbounds.append(outbound)
                 
-            if tls_obj:
-                outbound["tls"] = tls_obj
-                
-            outbound["transport"] = {
-                "type": "grpc",
-                "service_name": API_PATH
-            }
-            outbounds.append(outbound)
-            
     return json.dumps({"outbounds": outbounds}, indent=2, ensure_ascii=False)
 
 
