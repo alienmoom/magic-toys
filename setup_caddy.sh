@@ -199,6 +199,33 @@ get_configured_domains() {
     fi
 }
 
+# 获取已配置域名及对应证书类型 (每行格式: domain|cert_type)
+get_configured_domains_with_cert_type() {
+    if [ -f "$CADDY_FILE" ]; then
+        python3 -c "
+import re
+try:
+    with open('$CADDY_FILE', 'r') as f:
+        content = f.read()
+    blocks = re.findall(r'(https?://([A-Za-z0-9.-]+)(?::([0-9]+))?\s*\{([^}]*)\})', content, re.DOTALL)
+    for full_match, domain, port, body in blocks:
+        body_lower = body.lower()
+        if 'tls internal' in body_lower:
+            cert_type = '自签证书'
+        elif 'dns cloudflare' in body_lower:
+            cert_type = 'acme证书'
+        elif re.search(r'tls\s+/\S+\s+/\S+', body):
+            cert_type = '自签证书'
+        else:
+            cert_type = 'acme证书'
+        display_domain = f'{domain}:{port}' if port and port != '443' else domain
+        print(f'{display_domain}|{cert_type}')
+except Exception:
+    pass
+"
+    fi
+}
+
 # 获取当前所有对外监听端口汇总（例如 443, 8443）
 get_listen_ports_summary() {
     if [ -f "$CADDY_FILE" ]; then
@@ -398,12 +425,15 @@ manage_certificates() {
         echo -e "${CYAN}    2. 证书与域名管理 (申请 / 自签 / 删除)           ${PLAIN}"
         echo -e "${CYAN}====================================================${PLAIN}"
         echo -e "当前已配置的域名清单："
-        local domains=($(get_configured_domains))
+        local domains_raw=$(get_configured_domains_with_cert_type)
+        local domains=($domains_raw)
         if [ ${#domains[@]} -eq 0 ]; then
             echo -e "  ${YELLOW}(暂无配置域名)${PLAIN}"
         else
             for idx in "${!domains[@]}"; do
-                echo -e "  ${GREEN}[$((idx+1))] ${domains[$idx]}${PLAIN}"
+                local d_name=$(echo "${domains[$idx]}" | awk -F'|' '{print $1}')
+                local d_cert=$(echo "${domains[$idx]}" | awk -F'|' '{print $2}')
+                echo -e "  [${GREEN}$((idx+1))${PLAIN}] ${CYAN}${d_name}${PLAIN}  ${YELLOW}(${d_cert})${PLAIN}"
             done
         fi
         echo -e "----------------------------------------------------"
@@ -611,7 +641,8 @@ delete_domain_certificate() {
     echo -e "${CYAN}    证书与域名删除管理                              ${PLAIN}"
     echo -e "${CYAN}====================================================${PLAIN}"
 
-    local domains=($(get_configured_domains))
+    local domains_raw=$(get_configured_domains_with_cert_type)
+    local domains=($domains_raw)
     if [ ${#domains[@]} -eq 0 ]; then
         echo -e "${YELLOW}当前没有任何配置的域名！${PLAIN}"
         read -rp "按回车键返回..."
@@ -620,7 +651,9 @@ delete_domain_certificate() {
 
     echo -e "当前已配置的域名列表："
     for idx in "${!domains[@]}"; do
-        echo -e "  [${GREEN}$((idx+1))${PLAIN}] ${domains[$idx]}"
+        local d_name=$(echo "${domains[$idx]}" | awk -F'|' '{print $1}')
+        local d_cert=$(echo "${domains[$idx]}" | awk -F'|' '{print $2}')
+        echo -e "  [${GREEN}$((idx+1))${PLAIN}] ${CYAN}${d_name}${PLAIN}  ${YELLOW}(${d_cert})${PLAIN}"
     done
     echo -e "  [${RED}0${PLAIN}] 返回上级菜单"
     echo -e "----------------------------------------------------"
@@ -637,7 +670,8 @@ delete_domain_certificate() {
         return
     fi
 
-    local selected_domain="${domains[$((del_idx-1))]}"
+    local selected_entry="${domains[$((del_idx-1))]}"
+    local selected_domain=$(echo "$selected_entry" | awk -F'|' '{print $1}')
     local clean_domain=$(echo "$selected_domain" | awk -F':' '{print $1}')
 
     read -rp "确认要彻底删除域名 [${selected_domain}] 及其证书配置吗？(y/n): " confirm
