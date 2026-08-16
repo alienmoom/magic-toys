@@ -281,8 +281,7 @@ get_app_service_status() {
 reload_caddy() {
     echo -e "${YELLOW}>>> 正在验证 Caddyfile 语法并重启服务...${PLAIN}"
     if [ -f "$ENV_OVERRIDE" ]; then
-        local env_var=$(grep 'Environment=' "$ENV_OVERRIDE" | sed 's/Environment="//;s/"$//')
-        [ -n "$env_var" ] && export "$env_var" 2>/dev/null || true
+        export $(grep -oE 'CF_API_TOKEN=[^"]+' "$ENV_OVERRIDE") 2>/dev/null || true
     fi
     if caddy validate --config "$CADDY_FILE"; then
         systemctl daemon-reload
