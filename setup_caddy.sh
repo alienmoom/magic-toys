@@ -34,7 +34,7 @@ check_root() {
 
 # 注册全局快捷命令 toy
 install_toy_alias() {
-    if [ "$SCRIPT_PATH" != "/usr/local/bin/toy" ]; then
+    if [ -f "$SCRIPT_PATH" ] && [ "$SCRIPT_PATH" != "/usr/local/bin/toy" ]; then
         cp "$SCRIPT_PATH" /usr/local/bin/toy
         chmod +x /usr/local/bin/toy
     fi
