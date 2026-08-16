@@ -10,7 +10,7 @@ set -e
 CADDY_FILE="/etc/caddy/Caddyfile"
 CONF_DIR="/etc/caddy"
 ENV_OVERRIDE="/etc/systemd/system/caddy.service.d/override.conf"
-CERT_DIR="/var/lib/caddy/.local/share/caddy/certificates"
+CERT_DIR="/etc/caddy/certs"
 SCRIPT_PATH="$(readlink -f "$0")"
 APP_DIR="/opt/magic-toys"
 SERVICE_FILE="/etc/systemd/system/magic-toys.service"
@@ -117,11 +117,16 @@ install_caddy_cf_plugin() {
 
 # 初始化基础 Caddyfile 架构
 ensure_base_caddyfile() {
+    mkdir -p "$CONF_DIR" "$CERT_DIR"
+    chown -R caddy:caddy "$CONF_DIR" 2>/dev/null || true
     if [ ! -f "$CADDY_FILE" ]; then
         cat > "$CADDY_FILE" << 'EOF'
 {
 	admin off
 	auto_https disable_redirects
+	storage file_system {
+		root /etc/caddy/certs
+	}
 	log {
 		output stdout
 		format json
@@ -276,9 +281,77 @@ get_app_service_status() {
     fi
 }
 
+# 同步并整理证书文件到直观的 /etc/caddy/certs/<domain>/
+sync_domain_certs() {
+    local domain="$1"
+    local clean_dom=$(echo "$domain" | awk -F':' '{print $1}')
+    mkdir -p "${CERT_DIR}/${clean_dom}"
+    chown -R caddy:caddy "$CONF_DIR" 2>/dev/null || true
+    
+    # 尝试从 /etc/caddy/certs 或系统目录搜寻证书
+    local found_crt=$(find /etc/caddy/certs /var/lib/caddy /root/.local/share/caddy -path "*${clean_dom}*/*.crt" 2>/dev/null | head -n 1)
+    local found_key=$(find /etc/caddy/certs /var/lib/caddy /root/.local/share/caddy -path "*${clean_dom}*/*.key" 2>/dev/null | head -n 1)
+    
+    if [ -n "$found_crt" ] && [ -f "$found_crt" ]; then
+        cp -f "$found_crt" "${CERT_DIR}/${clean_dom}/${clean_dom}.crt" 2>/dev/null || true
+    fi
+    if [ -n "$found_key" ] && [ -f "$found_key" ]; then
+        cp -f "$found_key" "${CERT_DIR}/${clean_dom}/${clean_dom}.key" 2>/dev/null || true
+    fi
+    chmod -R 755 "${CERT_DIR}" 2>/dev/null || true
+    [ -f "${CERT_DIR}/${clean_dom}/${clean_dom}.key" ] && chmod 600 "${CERT_DIR}/${clean_dom}/${clean_dom}.key" 2>/dev/null || true
+}
+
+# 显示证书详细信息与物理路径
+display_cert_info() {
+    local domain="$1"
+    local clean_dom=$(echo "$domain" | awk -F':' '{print $1}')
+    sync_domain_certs "$clean_dom"
+    local crt_path="${CERT_DIR}/${clean_dom}/${clean_dom}.crt"
+    local key_path="${CERT_DIR}/${clean_dom}/${clean_dom}.key"
+    
+    echo -e "----------------------------------------------------"
+    if [ -f "$crt_path" ]; then
+        echo -e "📄 证书公钥路径: ${CYAN}${crt_path}${PLAIN}"
+        echo -e "🔑 证书私钥路径: ${CYAN}${key_path}${PLAIN}"
+        echo -e "📁 证书存储目录: ${CYAN}${CERT_DIR}/${clean_dom}/${PLAIN}"
+        if command -v openssl &>/dev/null; then
+            local dates=$(openssl x509 -in "$crt_path" -noout -dates 2>/dev/null)
+            local not_after=$(echo "$dates" | grep 'notAfter=' | cut -d= -f2)
+            [ -n "$not_after" ] && echo -e "⏳ 证书有效期限: ${GREEN}${not_after}${PLAIN}"
+        fi
+    else
+        echo -e "📁 证书存储目录: ${CYAN}${CERT_DIR}/${clean_dom}/${PLAIN}"
+        echo -e "💡 证书由 Caddy 自动申请与托管在: ${CYAN}${CERT_DIR}${PLAIN}"
+    fi
+    echo -e "----------------------------------------------------"
+}
+
+# 确保 Caddyfile 全局块包含 storage 存储路径配置
+ensure_cert_storage_config() {
+    if [ -f "$CADDY_FILE" ] && ! grep -q "storage file_system" "$CADDY_FILE"; then
+        python3 -c "
+cfile = '$CADDY_FILE'
+try:
+    with open(cfile, 'r') as f:
+        content = f.read()
+    if 'storage file_system' not in content:
+        import re
+        content = re.sub(r'\{\s*\n', '{\n\tstorage file_system {\n\t\troot /etc/caddy/certs\n\t}\n', content, count=1)
+        with open(cfile, 'w') as f:
+            f.write(content)
+except Exception:
+    pass
+"
+    fi
+}
+
 # 重载 Caddy 服务
 reload_caddy() {
     echo -e "${YELLOW}>>> 正在验证 Caddyfile 语法并重启服务...${PLAIN}"
+    ensure_cert_storage_config
+    mkdir -p "$CERT_DIR"
+    chown -R caddy:caddy "$CONF_DIR" 2>/dev/null || true
     if [ -f "$ENV_OVERRIDE" ]; then
         export $(grep -oE 'CF_API_TOKEN=[^"]+' "$ENV_OVERRIDE") 2>/dev/null || true
     fi
@@ -459,9 +532,10 @@ manage_certificates() {
         echo -e " 2. HTTP 申请证书 ${YELLOW}(需 80 端口正常开放，HTTP-01)${PLAIN}"
         echo -e " 3. 生成 Caddy 自签证书 ${BLUE}(tls internal，本地自签)${PLAIN}"
         echo -e " 4. 证书与域名删除管理 ${RED}(列出并删除已有域名及证书)${PLAIN}"
+        echo -e " 5. 查看证书详细路径与有效期 ${CYAN}(查看物理证书文件与到期日)${PLAIN}"
         echo -e " 0. 返回主菜单"
         echo -e "===================================================="
-        read -rp "请输入选项 [0-4]: " cert_choice
+        read -rp "请输入选项 [0-5]: " cert_choice
 
         case "$cert_choice" in
             1)
@@ -475,6 +549,9 @@ manage_certificates() {
                 ;;
             4)
                 delete_domain_certificate
+                ;;
+            5)
+                view_certificates_detail
                 ;;
             0)
                 break
@@ -545,10 +622,11 @@ EOF
 
     reload_caddy
     if [ "$port" = "443" ]; then
-        echo -e "${GREEN}✔ 域名 https://${domain} (Cloudflare DNS-01) 已成功添加并生效！${PLAIN}"
+        echo -e "\n${GREEN}✔ 域名 https://${domain} (Cloudflare DNS-01) 已成功添加并生效！${PLAIN}"
     else
-        echo -e "${GREEN}✔ 域名 https://${domain}:${port} (Cloudflare DNS-01) 已成功添加并生效 (自动跟随当前 Caddy 监听端口 ${port})！${PLAIN}"
+        echo -e "\n${GREEN}✔ 域名 https://${domain}:${port} (Cloudflare DNS-01) 已成功添加并生效 (自动跟随当前 Caddy 监听端口 ${port})！${PLAIN}"
     fi
+    display_cert_info "$domain"
     read -rp "按回车键继续..."
 }
 
@@ -589,10 +667,11 @@ EOF
 
     reload_caddy
     if [ "$port" = "443" ]; then
-        echo -e "${GREEN}✔ 域名 https://${domain} (HTTP-01 自动申请) 已成功添加！${PLAIN}"
+        echo -e "\n${GREEN}✔ 域名 https://${domain} (HTTP-01 自动申请) 已成功添加！${PLAIN}"
     else
-        echo -e "${GREEN}✔ 域名 https://${domain}:${port} (HTTP-01 自动申请) 已成功添加 (自动跟随当前 Caddy 监听端口 ${port})！${PLAIN}"
+        echo -e "\n${GREEN}✔ 域名 https://${domain}:${port} (HTTP-01 自动申请) 已成功添加 (自动跟随当前 Caddy 监听端口 ${port})！${PLAIN}"
     fi
+    display_cert_info "$domain"
     read -rp "按回车键继续..."
 }
 
@@ -635,9 +714,31 @@ EOF
 
     reload_caddy
     if [ "$port" = "443" ]; then
-        echo -e "${GREEN}✔ 域名 https://${domain} (自签证书 tls internal) 已成功添加！${PLAIN}"
+        echo -e "\n${GREEN}✔ 域名 https://${domain} (自签证书 tls internal) 已成功添加！${PLAIN}"
     else
-        echo -e "${GREEN}✔ 域名 https://${domain}:${port} (自签证书 tls internal) 已成功添加 (自动跟随当前 Caddy 监听端口 ${port})！${PLAIN}"
+        echo -e "\n${GREEN}✔ 域名 https://${domain}:${port} (自签证书 tls internal) 已成功添加 (自动跟随当前 Caddy 监听端口 ${port})！${PLAIN}"
+    fi
+    display_cert_info "$domain"
+    read -rp "按回车键继续..."
+}
+
+# 2.5 查看证书详细物理路径与有效期
+view_certificates_detail() {
+    clear
+    echo -e "${CYAN}====================================================${PLAIN}"
+    echo -e "${CYAN}    查看证书详细路径与有效期                          ${PLAIN}"
+    echo -e "${CYAN}====================================================${PLAIN}"
+    local domains_raw=$(get_configured_domains_with_cert_type)
+    local domains=($domains_raw)
+    if [ ${#domains[@]} -eq 0 ]; then
+        echo -e "${YELLOW}当前没有任何配置的域名！${PLAIN}"
+    else
+        for idx in "${!domains[@]}"; do
+            local d_name=$(echo "${domains[$idx]}" | awk -F'|' '{print $1}')
+            local d_cert=$(echo "${domains[$idx]}" | awk -F'|' '{print $2}')
+            echo -e "域名 [${GREEN}$((idx+1))${PLAIN}]: ${CYAN}${d_name}${PLAIN} (${YELLOW}${d_cert}${PLAIN})"
+            display_cert_info "$d_name"
+        done
     fi
     read -rp "按回车键继续..."
 }
