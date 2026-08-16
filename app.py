@@ -1185,13 +1185,12 @@ def render_advices_page(saved, skipped, domain_error="", save_error=False, remov
           })
           .catch(function(){ previewed = []; previewedUrl = ""; renderPreview(); updatePreviewButton(); setMsg("无效链接或无法访问", false); });
       };
-      var submitMerged = function(extraNodes, sourceUrl){
+      var submitMerged = function(extraNodes){
         var cur = (ta.value || "").split(/\r?\n/).map(function(s){ return s.trim(); }).filter(Boolean);
         var seen = {};
         cur.forEach(function(l){ seen[l] = 1; });
         var added = 0;
         extraNodes.forEach(function(l){ if (!seen[l]) { cur.push(l); seen[l] = 1; added++; } });
-        if (sourceUrl && !seen[sourceUrl]) { cur.push(sourceUrl); }
         ta.value = cur.join("\n");
         renderCheck();
         setMsg("已追加 " + added + " 个新节点，正在保存…", true);
@@ -1204,7 +1203,7 @@ def render_advices_page(saved, skipped, domain_error="", save_error=False, remov
             setMsg("预览中的节点已全部删除，无可追加节点", false);
             return;
           }
-          submitMerged(previewed, previewedUrl);
+          submitMerged(previewed);
           return;
         }
         var u = String(urlInput.value || "").trim();
@@ -1219,7 +1218,7 @@ def render_advices_page(saved, skipped, domain_error="", save_error=False, remov
             .then(function(r){ return r.json(); })
             .then(function(d){
               if (d.ok && d.addresses && d.addresses.length) {
-                submitMerged(d.addresses, u);
+                submitMerged(d.addresses);
               } else {
                 setMsg(d.error || "链接无效或无法访问", false);
               }
