@@ -1,0 +1,117 @@
+name: Docker Build (With Database Support)
+
+on:
+  push:
+    branches: [ "main" ]
+    paths-ignore:
+      - "**.md"
+  pull_request:
+    branches: [ "main" ]
+  workflow_dispatch:
+    inputs:
+      image_tag:
+        description: "自定义镜像标签 (选填，默认为 db)"
+        required: false
+        default: "db"
+      custom_db_type:
+        description: "数据库类型 (mysql 或 postgres)"
+        required: false
+        default: "mysql"
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ${{ github.repository }}
+  # 数据库连接环境配置（可由 GitHub Repository Secrets 覆盖）
+  DEFAULT_DB_NAME: magic_toys_db
+  DEFAULT_DB_USER: root
+  DEFAULT_DB_PASSWORD: rootpassword123
+  DEFAULT_DB_PORT: 3306
+
+jobs:
+  build-and-push-with-db:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+
+    # 启动 CI 数据库服务容器以验证数据库连接与建表流程
+    services:
+      mysql:
+        image: mysql:8.0
+        env:
+          MYSQL_ROOT_PASSWORD: rootpassword123
+          MYSQL_DATABASE: magic_toys_db
+        ports:
+          - 3306:3306
+        options: --health-cmd="mysqladmin ping -h localhost -uroot -prootpassword123" --health-interval=10s --health-timeout=5s --health-retries=5
+
+    steps:
+      - name: 检出代码
+        uses: actions/checkout@v4
+
+      - name: 设置 Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: 登录 GitHub Container Registry (GHCR)
+        if: github.event_name != 'pull_request'
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: 提取 Docker 镜像元数据 (数据库集成版)
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          tags: |
+            type=raw,value=latest
+            type=raw,value=db
+            type=raw,value=latest-db
+            type=raw,value=${{ inputs.image_tag }},enable=${{ github.event_name == 'workflow_dispatch' && inputs.image_tag != '' }}
+            type=sha,prefix=db-
+          labels: |
+            org.opencontainers.image.title=Magic Toys (Database Integrated)
+            org.opencontainers.image.description=Magic Toys 包含数据库连接配置与持久化存储支持的完整版本
+
+      - name: 数据库环境集成与连通性验证
+        env:
+          # 优先使用 GitHub Secrets 配置，若无则使用本地 CI 测试数据库服务
+          DATABASE_URL: ${{ secrets.DATABASE_URL || 'mysql://root:rootpassword123@127.0.0.1:3306/magic_toys_db' }}
+          SETTINGS_STORE: ${{ secrets.SETTINGS_STORE || secrets.ADVICES_STORE || 'database' }}
+          DB_TYPE: ${{ secrets.DB_TYPE || 'mysql' }}
+        run: |
+          echo ">>> 正在构建数据库集成验证镜像..."
+          docker build -t test-db-image:local .
+          
+          echo ">>> 启动容器 (注入数据库连接环境配置)..."
+          docker run -d --name test-db-container \
+            --network host \
+            -e PORT=3000 \
+            -e SETTINGS_STORE="$SETTINGS_STORE" \
+            -e DATABASE_URL="$DATABASE_URL" \
+            -e DB_TYPE="$DB_TYPE" \
+            test-db-image:local
+          
+          echo ">>> 等待服务连接数据库并初始化..."
+          sleep 5
+          
+          echo ">>> 验证服务响应..."
+          HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" http://localhost:3000/ || true)
+          echo "HTTP 响应状态码: $HTTP_CODE"
+          
+          docker logs test-db-container
+          docker stop test-db-container
+          docker rm test-db-container
+
+      - name: 构建并推送 Docker 镜像 (GHCR)
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: ./Dockerfile
+          push: ${{ github.event_name != 'pull_request' }}
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max

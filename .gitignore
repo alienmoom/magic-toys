@@ -1,0 +1,35 @@
+# Python 运行缓存与临时文件
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+venv/
+ENV/
+.env
+.venv
+
+# 敏感服务器信息与凭据 (严禁上传)
+*vps*.txt
+*VPS*.txt
+*证书*.txt
+*私钥*.txt
+*.pem
+*.key
+*.crt
+*.pfx
+*.p12
+djj/
+
+# 数据持久化文件
+config.json
+settings.json
+advices.json
+*.db
+*.sqlite3
+
+# 日志与缓存
+*.log
+.DS_Store
+Thumbs.db

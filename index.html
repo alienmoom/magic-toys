@@ -1,0 +1,1488 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="description" content="AstroCompute Nexus — 深空轨道分布式算力中心与跨星际科学探索基础设施。部署于近地轨道、地月拉格朗日点与火星轨道的高性能天基量子光子算力网络。">
+    <title>AstroCompute Nexus · 深空算力中心与星际探索枢纽</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;700&family=Orbitron:wght@500;700;800;900&family=Space+Grotesk:wght@500;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        :root {
+            --bg-deep: #050711;
+            --bg-card: rgba(13, 20, 40, 0.65);
+            --bg-card-hover: rgba(22, 34, 68, 0.85);
+            --border-glow: rgba(0, 245, 212, 0.25);
+            --border-dim: rgba(255, 255, 255, 0.08);
+            --cyan: #00f5d4;
+            --cyan-glow: rgba(0, 245, 212, 0.4);
+            --blue: #00bbf9;
+            --purple: #9d4edd;
+            --magenta: #f72585;
+            --text-main: #f0f4fc;
+            --text-muted: #8e9bb4;
+            --text-dim: #5c6880;
+            --radius-lg: 18px;
+            --radius-md: 12px;
+            --radius-sm: 8px;
+            --font-sans: 'Inter', system-ui, -apple-system, sans-serif;
+            --font-display: 'Orbitron', 'Space Grotesk', sans-serif;
+            --font-mono: 'JetBrains Mono', monospace;
+        }
+
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        html { scroll-behavior: smooth; }
+        body {
+            background-color: var(--bg-deep);
+            color: var(--text-main);
+            font-family: var(--font-sans);
+            line-height: 1.6;
+            overflow-x: hidden;
+            position: relative;
+        }
+
+        /* 宇宙星空背景 Canvas */
+        #starfield {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100vw;
+            height: 100vh;
+            z-index: -1;
+            pointer-events: none;
+        }
+
+        /* 顶部导航栏 */
+        header {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            z-index: 1000;
+            backdrop-filter: blur(16px);
+            background: rgba(5, 7, 17, 0.75);
+            border-bottom: 1px solid var(--border-dim);
+            transition: all 0.3s ease;
+        }
+        .nav-container {
+            max-width: 1320px;
+            margin: 0 auto;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 1rem 2rem;
+        }
+        .brand {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            text-decoration: none;
+            color: var(--text-main);
+        }
+        .brand-icon {
+            width: 38px;
+            height: 38px;
+            border-radius: 10px;
+            background: linear-gradient(135deg, var(--cyan), var(--purple));
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            box-shadow: 0 0 20px var(--cyan-glow);
+            color: #000;
+            font-size: 1.2rem;
+        }
+        .brand-text {
+            display: flex;
+            flex-direction: column;
+        }
+        .brand-name {
+            font-family: var(--font-display);
+            font-size: 1.15rem;
+            font-weight: 800;
+            letter-spacing: 0.08em;
+            background: linear-gradient(90deg, #fff, var(--cyan));
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+        .brand-tag {
+            font-size: 0.68rem;
+            color: var(--text-muted);
+            letter-spacing: 0.15em;
+            text-transform: uppercase;
+        }
+        .nav-links {
+            display: flex;
+            gap: 2rem;
+            list-style: none;
+        }
+        .nav-links a {
+            color: var(--text-muted);
+            text-decoration: none;
+            font-size: 0.9rem;
+            font-weight: 500;
+            transition: color 0.2s, text-shadow 0.2s;
+        }
+        .nav-links a:hover {
+            color: var(--cyan);
+            text-shadow: 0 0 10px var(--cyan-glow);
+        }
+        .nav-actions {
+            display: flex;
+            align-items: center;
+            gap: 1rem;
+        }
+        .live-status-pill {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            background: rgba(0, 245, 212, 0.08);
+            border: 1px solid rgba(0, 245, 212, 0.3);
+            padding: 6px 14px;
+            border-radius: 20px;
+            font-family: var(--font-mono);
+            font-size: 0.78rem;
+            color: var(--cyan);
+        }
+        .status-dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background-color: var(--cyan);
+            box-shadow: 0 0 8px var(--cyan);
+            animation: pulse-dot 2s infinite;
+        }
+        @keyframes pulse-dot {
+            0%, 100% { transform: scale(1); opacity: 1; }
+            50% { transform: scale(1.4); opacity: 0.4; }
+        }
+
+        /* 按钮组件 */
+        .btn {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+            padding: 0.75rem 1.6rem;
+            border-radius: var(--radius-sm);
+            font-size: 0.92rem;
+            font-weight: 600;
+            text-decoration: none;
+            cursor: pointer;
+            transition: all 0.25s ease;
+            border: none;
+            outline: none;
+        }
+        .btn-primary {
+            background: linear-gradient(135deg, var(--cyan), var(--blue));
+            color: #050b18;
+            box-shadow: 0 4px 20px var(--cyan-glow);
+        }
+        .btn-primary:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 28px rgba(0, 245, 212, 0.6);
+        }
+        .btn-outline {
+            background: rgba(255, 255, 255, 0.03);
+            color: var(--text-main);
+            border: 1px solid var(--border-dim);
+            backdrop-filter: blur(8px);
+        }
+        .btn-outline:hover {
+            border-color: var(--cyan);
+            background: rgba(0, 245, 212, 0.08);
+            transform: translateY(-2px);
+        }
+
+        /* Hero 区域 */
+        .hero {
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            padding: 8rem 2rem 5rem;
+            position: relative;
+            background: radial-gradient(circle at 50% 30%, rgba(13, 31, 75, 0.45) 0%, rgba(5, 7, 17, 0) 70%);
+        }
+        .hero-container {
+            max-width: 1320px;
+            margin: 0 auto;
+            display: grid;
+            grid-template-columns: 1.15fr 0.85fr;
+            gap: 4rem;
+            align-items: center;
+        }
+        .hero-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 10px;
+            padding: 6px 16px;
+            border-radius: 30px;
+            background: rgba(157, 78, 221, 0.12);
+            border: 1px solid rgba(157, 78, 221, 0.35);
+            color: #d8b4fe;
+            font-size: 0.82rem;
+            font-family: var(--font-mono);
+            margin-bottom: 1.5rem;
+        }
+        .hero-title {
+            font-family: var(--font-display);
+            font-size: 3.2rem;
+            font-weight: 900;
+            line-height: 1.2;
+            letter-spacing: -0.01em;
+            margin-bottom: 1.5rem;
+        }
+        .hero-title span {
+            background: linear-gradient(120deg, var(--cyan) 20%, var(--blue) 60%, var(--purple) 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+        .hero-subtitle {
+            font-size: 1.12rem;
+            color: var(--text-muted);
+            margin-bottom: 2.2rem;
+            max-width: 620px;
+            line-height: 1.8;
+        }
+        .hero-actions {
+            display: flex;
+            gap: 1.2rem;
+            margin-bottom: 3.5rem;
+        }
+        .hero-stats {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 1.5rem;
+            padding-top: 2rem;
+            border-top: 1px solid var(--border-dim);
+        }
+        .stat-item h3 {
+            font-family: var(--font-display);
+            font-size: 1.8rem;
+            font-weight: 800;
+            color: var(--cyan);
+            margin-bottom: 4px;
+        }
+        .stat-item p {
+            font-size: 0.8rem;
+            color: var(--text-muted);
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+        }
+
+        /* Hero 视觉卡片：3D 轨道动态模型卡片 */
+        .hero-visual {
+            position: relative;
+        }
+        .telemetry-card {
+            background: var(--bg-card);
+            border: 1px solid var(--border-dim);
+            border-radius: var(--radius-lg);
+            padding: 2rem;
+            box-shadow: 0 20px 50px rgba(0, 0, 0, 0.6), 0 0 30px rgba(0, 187, 249, 0.1);
+            backdrop-filter: blur(20px);
+            position: relative;
+            overflow: hidden;
+        }
+        .telemetry-card::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            height: 2px;
+            background: linear-gradient(90deg, transparent, var(--cyan), transparent);
+        }
+        .telemetry-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 1.5rem;
+            padding-bottom: 1rem;
+            border-bottom: 1px solid var(--border-dim);
+        }
+        .telemetry-title {
+            font-family: var(--font-mono);
+            font-size: 0.9rem;
+            color: var(--cyan);
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        .telemetry-node-select {
+            background: rgba(255, 255, 255, 0.05);
+            border: 1px solid var(--border-dim);
+            color: var(--text-main);
+            padding: 4px 10px;
+            border-radius: var(--radius-sm);
+            font-family: var(--font-mono);
+            font-size: 0.78rem;
+        }
+        .orbital-canvas-container {
+            width: 100%;
+            height: 220px;
+            border-radius: var(--radius-md);
+            background: radial-gradient(circle at 50% 50%, #0a1128 0%, #03050c 100%);
+            margin-bottom: 1.5rem;
+            position: relative;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            overflow: hidden;
+            border: 1px solid rgba(255, 255, 255, 0.05);
+        }
+        #orbital-sim {
+            width: 100%;
+            height: 100%;
+        }
+        .telemetry-grid {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 1rem;
+        }
+        .telemetry-cell {
+            background: rgba(255, 255, 255, 0.02);
+            border: 1px solid var(--border-dim);
+            border-radius: var(--radius-sm);
+            padding: 10px 14px;
+        }
+        .telemetry-label {
+            font-size: 0.75rem;
+            color: var(--text-dim);
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            margin-bottom: 4px;
+        }
+        .telemetry-val {
+            font-family: var(--font-mono);
+            font-size: 1.05rem;
+            font-weight: 700;
+            color: var(--text-main);
+        }
+
+        /* 核心模块通用样式 */
+        section {
+            padding: 6rem 2rem;
+            max-width: 1320px;
+            margin: 0 auto;
+            position: relative;
+        }
+        .section-tag {
+            font-family: var(--font-mono);
+            font-size: 0.82rem;
+            color: var(--cyan);
+            letter-spacing: 0.15em;
+            text-transform: uppercase;
+            margin-bottom: 0.8rem;
+            display: block;
+        }
+        .section-title {
+            font-family: var(--font-display);
+            font-size: 2.3rem;
+            font-weight: 800;
+            margin-bottom: 1rem;
+            line-height: 1.3;
+        }
+        .section-subtitle {
+            color: var(--text-muted);
+            font-size: 1.05rem;
+            max-width: 650px;
+            margin-bottom: 3.5rem;
+        }
+
+        /* 技术架构矩阵 */
+        .tech-grid {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 1.5rem;
+        }
+        .tech-card {
+            background: var(--bg-card);
+            border: 1px solid var(--border-dim);
+            border-radius: var(--radius-lg);
+            padding: 2rem 1.8rem;
+            transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+            position: relative;
+            display: flex;
+            flex-direction: column;
+        }
+        .tech-card:hover {
+            transform: translateY(-6px);
+            background: var(--bg-card-hover);
+            border-color: var(--border-glow);
+            box-shadow: 0 16px 40px rgba(0, 245, 212, 0.15);
+        }
+        .tech-icon {
+            width: 52px;
+            height: 52px;
+            border-radius: var(--radius-md);
+            background: rgba(0, 245, 212, 0.08);
+            border: 1px solid rgba(0, 245, 212, 0.2);
+            color: var(--cyan);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 1.4rem;
+            margin-bottom: 1.5rem;
+        }
+        .tech-title {
+            font-family: var(--font-display);
+            font-size: 1.15rem;
+            font-weight: 700;
+            margin-bottom: 0.8rem;
+        }
+        .tech-desc {
+            color: var(--text-muted);
+            font-size: 0.88rem;
+            line-height: 1.7;
+            flex-grow: 1;
+        }
+        .tech-badge {
+            display: inline-block;
+            margin-top: 1.5rem;
+            font-family: var(--font-mono);
+            font-size: 0.72rem;
+            color: var(--blue);
+            background: rgba(0, 187, 249, 0.1);
+            padding: 4px 8px;
+            border-radius: 4px;
+            width: fit-content;
+        }
+
+        /* 实时轨道集群遥测控制台 */
+        .console-section {
+            background: rgba(9, 14, 30, 0.75);
+            border: 1px solid var(--border-dim);
+            border-radius: 24px;
+            padding: 3rem;
+            box-shadow: 0 24px 60px rgba(0,0,0,0.5);
+            backdrop-filter: blur(24px);
+        }
+        .console-topbar {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 2rem;
+            border-bottom: 1px solid var(--border-dim);
+            padding-bottom: 1.2rem;
+        }
+        .console-tabs {
+            display: flex;
+            gap: 1rem;
+        }
+        .console-tab {
+            padding: 8px 18px;
+            border-radius: var(--radius-sm);
+            background: transparent;
+            border: 1px solid var(--border-dim);
+            color: var(--text-muted);
+            font-family: var(--font-mono);
+            font-size: 0.85rem;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+        .console-tab.active, .console-tab:hover {
+            background: var(--cyan);
+            color: #050a17;
+            border-color: var(--cyan);
+            font-weight: 700;
+            box-shadow: 0 0 16px var(--cyan-glow);
+        }
+        .console-dashboard {
+            display: grid;
+            grid-template-columns: 1.2fr 0.8fr;
+            gap: 2rem;
+        }
+        .cluster-node-list {
+            display: flex;
+            flex-direction: column;
+            gap: 1rem;
+        }
+        .node-row {
+            background: rgba(255, 255, 255, 0.02);
+            border: 1px solid var(--border-dim);
+            border-radius: var(--radius-md);
+            padding: 1.2rem 1.5rem;
+            display: grid;
+            grid-template-columns: 1.5fr 1fr 1fr 1fr;
+            align-items: center;
+            transition: border-color 0.2s;
+        }
+        .node-row:hover {
+            border-color: var(--border-glow);
+            background: rgba(0, 245, 212, 0.03);
+        }
+        .node-name {
+            font-family: var(--font-display);
+            font-size: 0.95rem;
+            font-weight: 700;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        .node-stat-val {
+            font-family: var(--font-mono);
+            font-size: 0.88rem;
+        }
+        .node-progress-bar {
+            width: 100%;
+            height: 6px;
+            background: rgba(255, 255, 255, 0.08);
+            border-radius: 3px;
+            overflow: hidden;
+            margin-top: 6px;
+        }
+        .node-progress-fill {
+            height: 100%;
+            background: linear-gradient(90deg, var(--blue), var(--cyan));
+            border-radius: 3px;
+        }
+        .terminal-box {
+            background: #03050c;
+            border: 1px solid var(--border-dim);
+            border-radius: var(--radius-md);
+            padding: 1.5rem;
+            font-family: var(--font-mono);
+            font-size: 0.8rem;
+            display: flex;
+            flex-direction: column;
+            height: 380px;
+        }
+        .terminal-header {
+            color: var(--text-dim);
+            padding-bottom: 0.8rem;
+            margin-bottom: 0.8rem;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+            display: flex;
+            justify-content: space-between;
+        }
+        .terminal-logs {
+            overflow-y: auto;
+            flex-grow: 1;
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+            color: #72f1b8;
+        }
+        .log-time { color: var(--text-dim); margin-right: 6px; }
+        .log-info { color: #38bdf8; }
+        .log-success { color: var(--cyan); }
+        .log-warning { color: #facc15; }
+
+        /* 深空探索场景应用 */
+        .missions-grid {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 2rem;
+        }
+        .mission-card {
+            background: var(--bg-card);
+            border: 1px solid var(--border-dim);
+            border-radius: var(--radius-lg);
+            overflow: hidden;
+            transition: all 0.3s ease;
+        }
+        .mission-card:hover {
+            border-color: var(--border-glow);
+            transform: translateY(-6px);
+            box-shadow: 0 18px 40px rgba(0,0,0,0.5);
+        }
+        .mission-img-header {
+            height: 160px;
+            background: linear-gradient(135deg, #0f1c3f, #1b0a2e);
+            position: relative;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            overflow: hidden;
+        }
+        .mission-orbit-circle {
+            width: 120px;
+            height: 120px;
+            border: 1px dashed rgba(0, 245, 212, 0.4);
+            border-radius: 50%;
+            animation: spin 20s linear infinite;
+        }
+        @keyframes spin { 100% { transform: rotate(360deg); } }
+        .mission-body {
+            padding: 1.8rem;
+        }
+        .mission-title {
+            font-family: var(--font-display);
+            font-size: 1.2rem;
+            font-weight: 700;
+            margin-bottom: 0.8rem;
+        }
+        .mission-desc {
+            color: var(--text-muted);
+            font-size: 0.9rem;
+            line-height: 1.7;
+            margin-bottom: 1.5rem;
+        }
+        .mission-metrics {
+            display: flex;
+            justify-content: space-between;
+            padding-top: 1rem;
+            border-top: 1px solid var(--border-dim);
+            font-family: var(--font-mono);
+            font-size: 0.78rem;
+            color: var(--cyan);
+        }
+
+        /* 探索路线图 */
+        .roadmap-container {
+            position: relative;
+            margin-top: 3rem;
+        }
+        .roadmap-line {
+            position: absolute;
+            top: 50%;
+            left: 0;
+            right: 0;
+            height: 2px;
+            background: linear-gradient(90deg, var(--cyan), var(--blue), var(--purple));
+            z-index: 1;
+            transform: translateY(-50%);
+        }
+        .roadmap-steps {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 2rem;
+            position: relative;
+            z-index: 2;
+        }
+        .roadmap-node {
+            background: var(--bg-card);
+            border: 1px solid var(--border-dim);
+            border-radius: var(--radius-md);
+            padding: 2rem 1.5rem;
+            text-align: center;
+            position: relative;
+            backdrop-filter: blur(12px);
+        }
+        .roadmap-marker {
+            width: 36px;
+            height: 36px;
+            border-radius: 50%;
+            background: var(--bg-deep);
+            border: 2px solid var(--cyan);
+            color: var(--cyan);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin: 0 auto 1.2rem;
+            font-family: var(--font-mono);
+            font-size: 0.85rem;
+            font-weight: 700;
+            box-shadow: 0 0 12px var(--cyan-glow);
+        }
+        .roadmap-phase {
+            font-family: var(--font-display);
+            font-size: 1.05rem;
+            font-weight: 700;
+            margin-bottom: 0.6rem;
+        }
+        .roadmap-desc {
+            color: var(--text-muted);
+            font-size: 0.82rem;
+            line-height: 1.6;
+        }
+
+        /* 算力接入试算器与交互表单 */
+        .compute-request-box {
+            background: linear-gradient(135deg, rgba(13, 20, 40, 0.9), rgba(5, 8, 18, 0.95));
+            border: 1px solid var(--border-glow);
+            border-radius: 24px;
+            padding: 3.5rem;
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 4rem;
+            box-shadow: 0 20px 60px rgba(0, 245, 212, 0.1);
+        }
+        .form-group {
+            margin-bottom: 1.5rem;
+        }
+        .form-group label {
+            display: block;
+            font-size: 0.85rem;
+            font-weight: 600;
+            color: var(--text-muted);
+            margin-bottom: 0.5rem;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+        }
+        .form-control {
+            width: 100%;
+            background: rgba(255, 255, 255, 0.04);
+            border: 1px solid var(--border-dim);
+            border-radius: var(--radius-sm);
+            padding: 0.85rem 1.2rem;
+            color: var(--text-main);
+            font-size: 0.95rem;
+            font-family: var(--font-sans);
+            outline: none;
+            transition: all 0.2s;
+        }
+        .form-control:focus {
+            border-color: var(--cyan);
+            box-shadow: 0 0 14px var(--cyan-glow);
+        }
+        .calc-preview {
+            background: rgba(0, 0, 0, 0.35);
+            border: 1px solid var(--border-dim);
+            border-radius: var(--radius-md);
+            padding: 2rem;
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+        }
+        .calc-result-row {
+            display: flex;
+            justify-content: space-between;
+            padding: 0.8rem 0;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+            font-family: var(--font-mono);
+            font-size: 0.9rem;
+        }
+        .calc-result-val {
+            color: var(--cyan);
+            font-weight: 700;
+        }
+
+        /* 页脚 */
+        footer {
+            border-top: 1px solid var(--border-dim);
+            background: #020409;
+            padding: 4rem 2rem 2rem;
+            font-size: 0.88rem;
+            color: var(--text-muted);
+        }
+        .footer-container {
+            max-width: 1320px;
+            margin: 0 auto;
+            display: grid;
+            grid-template-columns: 2fr 1fr 1fr 1fr;
+            gap: 3rem;
+            margin-bottom: 3rem;
+        }
+        .footer-brand p {
+            max-width: 320px;
+            margin-top: 1rem;
+            font-size: 0.85rem;
+            line-height: 1.7;
+        }
+        .footer-col h4 {
+            color: var(--text-main);
+            font-family: var(--font-display);
+            font-size: 0.95rem;
+            margin-bottom: 1.2rem;
+        }
+        .footer-col ul {
+            list-style: none;
+            display: flex;
+            flex-direction: column;
+            gap: 0.7rem;
+        }
+        .footer-col a {
+            color: var(--text-muted);
+            text-decoration: none;
+            transition: color 0.2s;
+        }
+        .footer-col a:hover {
+            color: var(--cyan);
+        }
+        .footer-bottom {
+            max-width: 1320px;
+            margin: 0 auto;
+            padding-top: 2rem;
+            border-top: 1px solid rgba(255, 255, 255, 0.05);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            font-family: var(--font-mono);
+            font-size: 0.78rem;
+            color: var(--text-dim);
+        }
+
+        /* 响应式适配 */
+        @media (max-width: 1024px) {
+            .hero-container { grid-template-columns: 1fr; gap: 3rem; }
+            .tech-grid { grid-template-columns: repeat(2, 1fr); }
+            .missions-grid { grid-template-columns: 1fr; }
+            .console-dashboard { grid-template-columns: 1fr; }
+            .roadmap-steps { grid-template-columns: repeat(2, 1fr); }
+            .roadmap-line { display: none; }
+            .compute-request-box { grid-template-columns: 1fr; gap: 2rem; }
+            .footer-container { grid-template-columns: 1fr 1fr; }
+        }
+        @media (max-width: 768px) {
+            .nav-links { display: none; }
+            .hero-title { font-size: 2.4rem; }
+            .hero-stats { grid-template-columns: repeat(2, 1fr); }
+            .tech-grid { grid-template-columns: 1fr; }
+            .footer-container { grid-template-columns: 1fr; }
+            .node-row { grid-template-columns: 1fr 1fr; gap: 0.8rem; }
+        }
+    </style>
+</head>
+<body>
+
+    <!-- 粒子星空 Canvas -->
+    <canvas id="starfield"></canvas>
+
+    <!-- 顶部导航 -->
+    <header>
+        <div class="nav-container">
+            <a href="#" class="brand">
+                <div class="brand-icon">
+                    <i class="fa-solid fa-satellite-dish"></i>
+                </div>
+                <div class="brand-text">
+                    <span class="brand-name">ASTROCOMPUTE</span>
+                    <span class="brand-tag">DEEP SPACE INFRASTRUCTURE</span>
+                </div>
+            </a>
+            <ul class="nav-links">
+                <li><a href="#architecture">核心架构</a></li>
+                <li><a href="#telemetry">星轨遥测</a></li>
+                <li><a href="#missions">探索使命</a></li>
+                <li><a href="#roadmap">空间路线图</a></li>
+                <li><a href="#request">算力申请</a></li>
+            </ul>
+            <div class="nav-actions">
+                <div class="live-status-pill">
+                    <span class="status-dot"></span>
+                    <span>1,024 轨道节点在线</span>
+                </div>
+                <a href="#request" class="btn btn-primary">接入集群</a>
+            </div>
+        </div>
+    </header>
+
+    <!-- 首屏 Hero -->
+    <section class="hero">
+        <div class="hero-container">
+            <div class="hero-content">
+                <div class="hero-badge">
+                    <i class="fa-solid fa-atom"></i>
+                    <span>NEXT-GEN ORBITAL QUANTUM COMPUTE NEXUS</span>
+                </div>
+                <h1 class="hero-title">
+                    突破引力枷锁<br>
+                    构筑<span>跨星际分布式算力底座</span>
+                </h1>
+                <p class="hero-subtitle">
+                    AstroCompute Nexus 部署于近地轨道、地月拉格朗日 L2 点与火星极地轨道。依托零重力深空超低温辐射冷却与相干光子互联，为系外生命搜寻、深空引力波解析及行星际自主导航提供澎湃算力支持。
+                </p>
+                <div class="hero-actions">
+                    <a href="#telemetry" class="btn btn-primary">
+                        <i class="fa-solid fa-satellite"></i> 监控轨道集群
+                    </a>
+                    <a href="#request" class="btn btn-outline">
+                        <i class="fa-solid fa-terminal"></i> 申请科研算力配额
+                    </a>
+                </div>
+                <div class="hero-stats">
+                    <div class="stat-item">
+                        <h3 id="stat-flops">842.6</h3>
+                        <p>集群总算力 (EFLOPS)</p>
+                    </div>
+                    <div class="stat-item">
+                        <h3>1,024</h3>
+                        <p>深空算力卫星节点</p>
+                    </div>
+                    <div class="stat-item">
+                        <h3>0.04 ms</h3>
+                        <p>星间相干激光延迟</p>
+                    </div>
+                    <div class="stat-item">
+                        <h3>100%</h3>
+                        <p>太阳能空间连续供电</p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 右侧遥测监控卡片 -->
+            <div class="hero-visual">
+                <div class="telemetry-card">
+                    <div class="telemetry-header">
+                        <div class="telemetry-title">
+                            <i class="fa-solid fa-circle-nodes"></i>
+                            <span>ORBITAL MESH TELEMETRY</span>
+                        </div>
+                        <select class="telemetry-node-select" id="nodeSelect">
+                            <option value="leo-1">LEO-Alpha Constellation (550km)</option>
+                            <option value="lagrange">Lagrange L2 Relay Hub (1.5M km)</option>
+                            <option value="mars">Mars Orbital Halo (Synapse-3)</option>
+                        </select>
+                    </div>
+                    <div class="orbital-canvas-container">
+                        <canvas id="orbital-sim"></canvas>
+                    </div>
+                    <div class="telemetry-grid">
+                        <div class="telemetry-cell">
+                            <div class="telemetry-label">量子张量核心负载</div>
+                            <div class="telemetry-val" id="tele-load">88.4%</div>
+                        </div>
+                        <div class="telemetry-cell">
+                            <div class="telemetry-label">深空辐射屏蔽效率</div>
+                            <div class="telemetry-val" id="tele-shield">99.98%</div>
+                        </div>
+                        <div class="telemetry-cell">
+                            <div class="telemetry-label">超导核心工作温度</div>
+                            <div class="telemetry-val" id="tele-temp">3.85 K</div>
+                        </div>
+                        <div class="telemetry-cell">
+                            <div class="telemetry-label">星地太赫兹吞吐</div>
+                            <div class="telemetry-val" id="tele-bw">128.4 Tbps</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- 核心技术架构 -->
+    <section id="architecture">
+        <span class="section-tag">// ARCHITECTURE & HARDWARE</span>
+        <h2 class="section-title">突破极限的太空算力工程矩阵</h2>
+        <p class="section-subtitle">克服宇宙射线辐射、严苛真空热循环与长距离通信时延，为深空探索量身定制的极致天基算力系统架构。</p>
+
+        <div class="tech-grid">
+            <div class="tech-card">
+                <div class="tech-icon"><i class="fa-solid fa-snowflake"></i></div>
+                <h3 class="tech-title">零重力低温辐射制冷</h3>
+                <p class="tech-desc">利用深空 2.7K 宇宙微波背景辐射作为天然冷源，通过超导热管阵列实现近乎零功耗的大规模光子芯片散热。</p>
+                <span class="tech-badge">THERMAL PASSIVE 2.7K</span>
+            </div>
+            <div class="tech-card">
+                <div class="tech-icon"><i class="fa-solid fa-bolt-lightning"></i></div>
+                <h3 class="tech-title">空间光通信网状网</h3>
+                <p class="tech-desc">多通道太赫兹与 1550nm 相干激光星间链路，组建覆盖地月空间的高吞吐无损网状中继网络。</p>
+                <span class="tech-badge">INTER-SATELLITE MESH</span>
+            </div>
+            <div class="tech-card">
+                <div class="tech-icon"><i class="fa-solid fa-shield-halved"></i></div>
+                <h3 class="tech-title">辐射加固光子张量芯片</h3>
+                <p class="tech-desc">三级抗单粒子翻转纠错架构与碳纳米管防护罩，确保芯片在太阳耀斑与银河宇宙射线下的长效自愈运行。</p>
+                <span class="tech-badge">RAD-HARDENED TPU</span>
+            </div>
+            <div class="tech-card">
+                <div class="tech-icon"><i class="fa-solid fa-sun"></i></div>
+                <h3 class="tech-title">空间太阳能永续供能</h3>
+                <p class="tech-desc">轨道全天候无大气损耗太阳能聚光电池翼，结合超导磁储能系统，实现 24/7 满负荷算力恒定供给。</p>
+                <span class="tech-badge">DIRECT SOLAR ARRAY</span>
+            </div>
+        </div>
+    </section>
+
+    <!-- 实时星轨遥测控制台 -->
+    <section id="telemetry">
+        <div class="console-section">
+            <div class="console-topbar">
+                <div>
+                    <span class="section-tag" style="margin-bottom:4px;">// LIVE MISSION TELEMETRY</span>
+                    <h3 style="font-family:var(--font-display); font-size:1.4rem;">天基算力节点实时集群控制台</h3>
+                </div>
+                <div class="console-tabs">
+                    <button class="console-tab active" onclick="switchCluster('leo')">近地轨道群 (LEO)</button>
+                    <button class="console-tab" onclick="switchCluster('lunar')">地月 L2 枢纽</button>
+                    <button class="console-tab" onclick="switchCluster('mars')">火星先锋阵列</button>
+                </div>
+            </div>
+
+            <div class="console-dashboard">
+                <div class="cluster-node-list">
+                    <div class="node-row">
+                        <div class="node-name">
+                            <i class="fa-solid fa-server" style="color:var(--cyan);"></i>
+                            <span>NEXUS-LEO-01</span>
+                        </div>
+                        <div>
+                            <div class="telemetry-label">节点负载</div>
+                            <div class="node-stat-val" id="node1-load">92%</div>
+                            <div class="node-progress-bar"><div class="node-progress-fill" style="width: 92%;"></div></div>
+                        </div>
+                        <div>
+                            <div class="telemetry-label">轨道高度</div>
+                            <div class="node-stat-val">542.8 km</div>
+                        </div>
+                        <div>
+                            <div class="telemetry-label">状态</div>
+                            <div class="node-stat-val" style="color:var(--cyan);">OPTIMAL</div>
+                        </div>
+                    </div>
+
+                    <div class="node-row">
+                        <div class="node-name">
+                            <i class="fa-solid fa-server" style="color:var(--blue);"></i>
+                            <span>NEXUS-LEO-02</span>
+                        </div>
+                        <div>
+                            <div class="telemetry-label">节点负载</div>
+                            <div class="node-stat-val" id="node2-load">78%</div>
+                            <div class="node-progress-bar"><div class="node-progress-fill" style="width: 78%;"></div></div>
+                        </div>
+                        <div>
+                            <div class="telemetry-label">轨道高度</div>
+                            <div class="node-stat-val">556.1 km</div>
+                        </div>
+                        <div>
+                            <div class="telemetry-label">状态</div>
+                            <div class="node-stat-val" style="color:var(--cyan);">OPTIMAL</div>
+                        </div>
+                    </div>
+
+                    <div class="node-row">
+                        <div class="node-name">
+                            <i class="fa-solid fa-server" style="color:var(--purple);"></i>
+                            <span>NEXUS-L2-RELAY</span>
+                        </div>
+                        <div>
+                            <div class="telemetry-label">节点负载</div>
+                            <div class="node-stat-val" id="node3-load">85%</div>
+                            <div class="node-progress-bar"><div class="node-progress-fill" style="width: 85%;"></div></div>
+                        </div>
+                        <div>
+                            <div class="telemetry-label">轨道高度</div>
+                            <div class="node-stat-val">1,496,200 km</div>
+                        </div>
+                        <div>
+                            <div class="telemetry-label">状态</div>
+                            <div class="node-stat-val" style="color:var(--cyan);">STABLE</div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 实时终端日志流 -->
+                <div class="terminal-box">
+                    <div class="terminal-header">
+                        <span>MISSION CONSOLE OUTPUT STREAM</span>
+                        <span id="log-clock">UTC 2026-08-15 15:20:00</span>
+                    </div>
+                    <div class="terminal-logs" id="terminalLogs">
+                        <div><span class="log-time">[15:20:01]</span> <span class="log-info">[LEO-01]</span> 成功锁定 FAST 射电望远镜上行太赫兹光通道。</div>
+                        <div><span class="log-time">[15:20:04]</span> <span class="log-success">[QUANTUM]</span> 完成第 8,492 批次系外行星大气透射光谱反演。</div>
+                        <div><span class="log-time">[15:20:09]</span> <span class="log-info">[L2-RELAY]</span> 接收到韦伯空间望远镜原始红外干涉数据流 (4.2 TB)。</div>
+                        <div><span class="log-time">[15:20:14]</span> <span class="log-success">[CORE]</span> 太阳翼供电效率达到 99.4%，超导量子芯片温度维持 3.8K。</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- 深空探索使命场景 -->
+    <section id="missions">
+        <span class="section-tag">// SCIENTIFIC MISSIONS</span>
+        <h2 class="section-title">驱动人类星际探索的前沿科学使命</h2>
+        <p class="section-subtitle">从毫秒级深空引力波捕获到百亿光年宇宙演化仿真，天基算力正在重构现代天文学与行星科学研究范式。</p>
+
+        <div class="missions-grid">
+            <div class="mission-card">
+                <div class="mission-img-header">
+                    <div class="mission-orbit-circle"></div>
+                    <i class="fa-solid fa-earth-americas" style="position:absolute; font-size:2.5rem; color:var(--cyan);"></i>
+                </div>
+                <div class="mission-body">
+                    <h3 class="mission-title">系外宜居行星生命指征探测</h3>
+                    <p class="mission-desc">利用分布式轨道算力对凌星光谱进行实时高精度反演，消除恒星耀斑噪声，毫秒级分析氧气、甲烷与水汽特征吸收峰。</p>
+                    <div class="mission-metrics">
+                        <span>处理延迟: 1.2 ms</span>
+                        <span>准确度: 99.999%</span>
+                    </div>
+                </div>
+            </div>
+
+            <div class="mission-card">
+                <div class="mission-img-header">
+                    <div class="mission-orbit-circle" style="animation-duration: 15s; border-color:var(--blue);"></div>
+                    <i class="fa-solid fa-wave-square" style="position:absolute; font-size:2.5rem; color:var(--blue);"></i>
+                </div>
+                <div class="mission-body">
+                    <h3 class="mission-title">引力波与快速射电暴实时去噪</h3>
+                    <p class="mission-desc">毫秒级捕获双中子星并合产生的瞬态引力波脉冲，协调全球射电天线阵列与轨道光学望远镜进行全波段引力波电磁对应体溯源。</p>
+                    <div class="mission-metrics">
+                        <span>响应时间: &lt; 50 ms</span>
+                        <span>波形重构: 实时</span>
+                    </div>
+                </div>
+            </div>
+
+            <div class="mission-card">
+                <div class="mission-img-header">
+                    <div class="mission-orbit-circle" style="animation-duration: 25s; border-color:var(--purple);"></div>
+                    <i class="fa-solid fa-shuttle-space" style="position:absolute; font-size:2.5rem; color:var(--purple);"></i>
+                </div>
+                <div class="mission-body">
+                    <h3 class="mission-title">深空星舰编队自主导航解算</h3>
+                    <p class="mission-desc">为地月及火星探测器编队提供多体引力扰动与相对论引力弹弓轨道实时超算，完全摆脱地基测控信号单向时延限制。</p>
+                    <div class="mission-metrics">
+                        <span>自主决策: 零通信等待</span>
+                        <span>轨道精度: 厘米级</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- 空间探索路线图 -->
+    <section id="roadmap">
+        <span class="section-tag">// STRATEGIC ROADMAP</span>
+        <h2 class="section-title">人类跨行星算力网络演进路线</h2>
+        <p class="section-subtitle">从近地空间超算星座，到太阳系日球层量子信息高速公路的跨世纪工程蓝图。</p>
+
+        <div class="roadmap-container">
+            <div class="roadmap-line"></div>
+            <div class="roadmap-steps">
+                <div class="roadmap-node">
+                    <div class="roadmap-marker">01</div>
+                    <h4 class="roadmap-phase">LEO 天基先导网络</h4>
+                    <p class="roadmap-desc">近地轨道 1,024 颗光子算力卫星完成组网，实现全球地空毫秒级算力直连中继。</p>
+                </div>
+                <div class="roadmap-node">
+                    <div class="roadmap-marker">02</div>
+                    <h4 class="roadmap-phase">地月 L2 空间超算枢纽</h4>
+                    <p class="roadmap-desc">进驻地月拉格朗日 L2 平衡点，构建百 EFLOPS 级深空常驻科研数据处理中枢。</p>
+                </div>
+                <div class="roadmap-node">
+                    <div class="roadmap-marker">03</div>
+                    <h4 class="roadmap-phase">火星极地轨道算力环</h4>
+                    <p class="roadmap-desc">为火星永久科研基地与深空无人探测舰队提供无通信盲区的行星际边缘计算核心。</p>
+                </div>
+                <div class="roadmap-node">
+                    <div class="roadmap-marker">04</div>
+                    <h4 class="roadmap-phase">太阳系日球层量子网</h4>
+                    <p class="roadmap-desc">基于太阳引力透镜焦点部署远深空超导量子中继站，迈向星际级文明通信与算力互联。</p>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- 算力配额试算与接入申请 -->
+    <section id="request">
+        <div class="compute-request-box">
+            <div>
+                <span class="section-tag">// JOIN ASTROCOMPUTE</span>
+                <h2 class="section-title" style="font-size:1.8rem; margin-bottom:1rem;">申请深空算力节点接入与配额</h2>
+                <p style="color:var(--text-muted); font-size:0.95rem; margin-bottom:2rem; line-height:1.7;">
+                    面向全球科研机构、天文观测台站及深空航天器开放分布式算力调度接口。支持标准 API 与空间激光数据上行直连。
+                </p>
+
+                <form id="computeForm" onsubmit="event.preventDefault(); simulateComputeAllocation();">
+                    <div class="form-group">
+                        <label>科研机构 / 任务代号</label>
+                        <input type="text" class="form-control" placeholder="例如：国家天文台 / MISSION-PROXIMA" required>
+                    </div>
+                    <div class="form-group">
+                        <label>算力任务类型</label>
+                        <select class="form-control" id="taskType" onchange="updateEstimator()">
+                            <option value="exoplanet">系外行星光谱分析 (Exoplanet Spectral Inversion)</option>
+                            <option value="gravitational">深空引力波瞬态去噪 (Gravitational Wave Denoising)</option>
+                            <option value="navigation">星际航线高维引力解算 (Interplanetary Trajectory Optimization)</option>
+                            <option value="seti">地外信号神经形态模式匹配 (Extraterrestrial Signal Analysis)</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label>申请算力规模</label>
+                        <select class="form-control" id="computeScale" onchange="updateEstimator()">
+                            <option value="10">10 EFLOPS · 基础科研批处理</option>
+                            <option value="50">50 EFLOPS · 实时天文多波段联测</option>
+                            <option value="200">200 EFLOPS · 空间望远镜全阵列专享</option>
+                        </select>
+                    </div>
+                    <button type="submit" class="btn btn-primary" style="width:100%; padding:0.9rem;">
+                        <i class="fa-solid fa-paper-plane"></i> 提交星际算力申请
+                    </button>
+                </form>
+            </div>
+
+            <!-- 右侧试算结果预览 -->
+            <div class="calc-preview">
+                <div>
+                    <h4 style="font-family:var(--font-display); font-size:1.1rem; color:var(--cyan); margin-bottom:1.5rem;">
+                        <i class="fa-solid fa-calculator"></i> 轨道节点调度预估参数
+                    </h4>
+                    <div class="calc-result-row">
+                        <span>分配轨道星座</span>
+                        <span class="calc-result-val" id="res-cluster">LEO-Alpha Cluster</span>
+                    </div>
+                    <div class="calc-result-row">
+                        <span>预估星地双向时延</span>
+                        <span class="calc-result-val" id="res-latency">1.8 ms</span>
+                    </div>
+                    <div class="calc-result-row">
+                        <span>太赫兹通道带宽</span>
+                        <span class="calc-result-val" id="res-bandwidth">40 Gbps 独享</span>
+                    </div>
+                    <div class="calc-result-row">
+                        <span>单日能耗碳排放</span>
+                        <span class="calc-result-val" style="color:#72f1b8;">0.00 kg (空间零碳太阳能)</span>
+                    </div>
+                    <div class="calc-result-row">
+                        <span>数据加密标准</span>
+                        <span class="calc-result-val">量子一次一密 (QKD)</span>
+                    </div>
+                </div>
+
+                <div style="background:rgba(0, 245, 212, 0.05); border:1px solid rgba(0, 245, 212, 0.2); padding:1rem; border-radius:var(--radius-sm); margin-top:1.5rem;">
+                    <div style="font-size:0.8rem; color:var(--text-muted);">
+                        <i class="fa-solid fa-circle-check" style="color:var(--cyan); margin-right:4px;"></i>
+                        节点已通过深空抗辐射一致性验证，支持 7×24 小时实时遥测与数据回传。
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- 页脚 -->
+    <footer>
+        <div class="footer-container">
+            <div class="footer-brand">
+                <a href="#" class="brand">
+                    <div class="brand-icon"><i class="fa-solid fa-satellite-dish"></i></div>
+                    <div class="brand-text">
+                        <span class="brand-name">ASTROCOMPUTE</span>
+                        <span class="brand-tag">DEEP SPACE INFRASTRUCTURE</span>
+                    </div>
+                </a>
+                <p>
+                    AstroCompute Nexus 是新一代天基分布式高性能计算系统，旨在为跨星际科学研究、深空探测与未来文明拓展提供永续、安全、高效的算力基础设施。
+                </p>
+            </div>
+            <div class="footer-col">
+                <h4>空间网络</h4>
+                <ul>
+                    <li><a href="#architecture">近地轨道星座</a></li>
+                    <li><a href="#architecture">地月 L2 枢纽</a></li>
+                    <li><a href="#architecture">火星先锋算力环</a></li>
+                    <li><a href="#telemetry">实时遥测控制台</a></li>
+                </ul>
+            </div>
+            <div class="footer-col">
+                <h4>科研合作</h4>
+                <ul>
+                    <li><a href="#missions">系外行星观测</a></li>
+                    <li><a href="#missions">引力波电磁对应体</a></li>
+                    <li><a href="#missions">行星际航行解算</a></li>
+                    <li><a href="#request">算力配额申请</a></li>
+                </ul>
+            </div>
+            <div class="footer-col">
+                <h4>接口文档</h4>
+                <ul>
+                    <li><a href="/sublink">v2ray 空间协议订阅接口</a></li>
+                    <li><a href="/settings">节点配置与集群管理</a></li>
+                    <li><a href="#">太赫兹激光协议白皮书</a></li>
+                    <li><a href="#">量子纠缠保真度标准</a></li>
+                </ul>
+            </div>
+        </div>
+        <div class="footer-bottom">
+            <div>© 2026 ASTROCOMPUTE NEXUS · DEEP SPACE COMPUTATION PROJECT. ALL RIGHTS RESERVED.</div>
+            <div>STATUS: NOMINAL · ORBITAL VELOCITY: 7.68 KM/S · TIME: UTC 2026-08-15</div>
+        </div>
+    </footer>
+
+    <!-- 交互与星空渲染脚本 -->
+    <script>
+        // 1. 动态背景星空粒子引擎
+        const canvas = document.getElementById('starfield');
+        const ctx = canvas.getContext('2d');
+        let width, height, stars = [];
+
+        function resize() {
+            width = canvas.width = window.innerWidth;
+            height = canvas.height = window.innerHeight;
+            initStars();
+        }
+
+        function initStars() {
+            stars = [];
+            const count = Math.floor((width * height) / 3200);
+            for (let i = 0; i < count; i++) {
+                stars.push({
+                    x: Math.random() * width,
+                    y: Math.random() * height,
+                    size: Math.random() * 1.8 + 0.3,
+                    alpha: Math.random() * 0.8 + 0.2,
+                    speed: Math.random() * 0.15 + 0.05,
+                    pulse: Math.random() * 0.02
+                });
+            }
+        }
+
+        function animateStars() {
+            ctx.clearRect(0, 0, width, height);
+            stars.forEach(s => {
+                s.y -= s.speed;
+                if (s.y < 0) { s.y = height; s.x = Math.random() * width; }
+                s.alpha += Math.sin(Date.now() * s.pulse) * 0.01;
+                s.alpha = Math.max(0.1, Math.min(1, s.alpha));
+
+                ctx.fillStyle = `rgba(200, 230, 255, ${s.alpha})`;
+                ctx.beginPath();
+                ctx.arc(s.x, s.y, s.size, 0, Math.PI * 2);
+                ctx.fill();
+            });
+            requestAnimationFrame(animateStars);
+        }
+
+        window.addEventListener('resize', resize);
+        resize();
+        animateStars();
+
+        // 2. 遥测小卡片 3D 轨道动画模拟
+        const simCanvas = document.getElementById('orbital-sim');
+        const sCtx = simCanvas.getContext('2d');
+        let angle = 0;
+
+        function drawOrbitalSim() {
+            simCanvas.width = simCanvas.offsetWidth;
+            simCanvas.height = simCanvas.offsetHeight;
+            const cx = simCanvas.width / 2;
+            const cy = simCanvas.height / 2;
+
+            sCtx.clearRect(0, 0, simCanvas.width, simCanvas.height);
+
+            // 绘制中心行星
+            const planetGrad = sCtx.createRadialGradient(cx - 5, cy - 5, 2, cx, cy, 28);
+            planetGrad.addColorStop(0, '#00f5d4');
+            planetGrad.addColorStop(0.6, '#0077b6');
+            planetGrad.addColorStop(1, '#03045e');
+            sCtx.fillStyle = planetGrad;
+            sCtx.beginPath();
+            sCtx.arc(cx, cy, 26, 0, Math.PI * 2);
+            sCtx.fill();
+
+            // 绘制轨道环
+            sCtx.strokeStyle = 'rgba(0, 245, 212, 0.25)';
+            sCtx.lineWidth = 1.2;
+            sCtx.beginPath();
+            sCtx.ellipse(cx, cy, 85, 34, -0.2, 0, Math.PI * 2);
+            sCtx.stroke();
+
+            // 绘制运行的卫星节点
+            angle += 0.025;
+            const sx = cx + Math.cos(angle) * 85 * Math.cos(-0.2) - Math.sin(angle) * 34 * Math.sin(-0.2);
+            const sy = cy + Math.cos(angle) * 85 * Math.sin(-0.2) + Math.sin(angle) * 34 * Math.cos(-0.2);
+
+            sCtx.fillStyle = '#00f5d4';
+            sCtx.shadowColor = '#00f5d4';
+            sCtx.shadowBlur = 10;
+            sCtx.beginPath();
+            sCtx.arc(sx, sy, 5, 0, Math.PI * 2);
+            sCtx.fill();
+            sCtx.shadowBlur = 0;
+
+            // 绘制激光连接虚线
+            sCtx.strokeStyle = 'rgba(0, 187, 249, 0.4)';
+            sCtx.setLineDash([4, 4]);
+            sCtx.beginPath();
+            sCtx.moveTo(cx, cy);
+            sCtx.lineTo(sx, sy);
+            sCtx.stroke();
+            sCtx.setLineDash([]);
+
+            requestAnimationFrame(drawOrbitalSim);
+        }
+        drawOrbitalSim();
+
+        // 3. 动态数据波动与控制台日志生成器
+        setInterval(() => {
+            const statFlops = document.getElementById('stat-flops');
+            if (statFlops) {
+                const val = (842.0 + Math.random() * 1.5).toFixed(1);
+                statFlops.innerText = val;
+            }
+            const teleLoad = document.getElementById('tele-load');
+            if (teleLoad) {
+                teleLoad.innerText = (87.5 + Math.random() * 2.5).toFixed(1) + '%';
+            }
+            const teleTemp = document.getElementById('tele-temp');
+            if (teleTemp) {
+                teleTemp.innerText = (3.82 + Math.random() * 0.05).toFixed(2) + ' K';
+            }
+        }, 2000);
+
+        const logs = [
+            "接收到南极冰立方中微子探测器同步事件 (Event ID: #98421)。",
+            "完成 LEO-03 节点量子纠缠源极化态自动标定，保真度 99.98%。",
+            "太阳耀斑预警解除，辐射屏蔽阵列恢复标准巡航模式。",
+            "处理 FAST 传回的 1.4 GHz 氢原子谱线超精细结构数据集。",
+            "火星先锋节点 Synapse-3 完成自适应星历重算，时延降低 0.02ms。"
+        ];
+
+        setInterval(() => {
+            const terminal = document.getElementById('terminalLogs');
+            if (terminal) {
+                const now = new Date();
+                const timeStr = `[${String(now.getUTCHours()).padStart(2, '0')}:${String(now.getUTCMinutes()).padStart(2, '0')}:${String(now.getUTCSeconds()).padStart(2, '0')}]`;
+                const randomLog = logs[Math.floor(Math.random() * logs.length)];
+                const logItem = document.createElement('div');
+                logItem.innerHTML = `<span class="log-time">${timeStr}</span> <span class="log-info">[ORBITAL]</span> ${randomLog}`;
+                terminal.appendChild(logItem);
+                terminal.scrollTop = terminal.scrollHeight;
+                if (terminal.children.length > 25) {
+                    terminal.removeChild(terminal.children[0]);
+                }
+            }
+        }, 4500);
+
+        // 4. 算力试算器动态计算
+        function updateEstimator() {
+            const task = document.getElementById('taskType').value;
+            const scale = document.getElementById('computeScale').value;
+            const resCluster = document.getElementById('res-cluster');
+            const resLatency = document.getElementById('res-latency');
+            const resBandwidth = document.getElementById('res-bandwidth');
+
+            if (task === 'exoplanet') {
+                resCluster.innerText = "LEO-Alpha Cluster";
+                resLatency.innerText = "1.8 ms";
+                resBandwidth.innerText = `${scale * 4} Gbps 空间直连`;
+            } else if (task === 'gravitational') {
+                resCluster.innerText = "Lagrange L2 Relay Hub";
+                resLatency.innerText = "4.2 ms";
+                resBandwidth.innerText = `${scale * 8} Gbps 太赫兹网`;
+            } else if (task === 'navigation') {
+                resCluster.innerText = "Mars Orbital Halo";
+                resLatency.innerText = "0.04 ms (原位边缘)";
+                resBandwidth.innerText = `${scale * 2} Gbps 激光网`;
+            } else {
+                resCluster.innerText = "Global Deep-Space Mesh";
+                resLatency.innerText = "2.1 ms";
+                resBandwidth.innerText = `${scale * 6} Gbps 专享`;
+            }
+        }
+
+        function simulateComputeAllocation() {
+            alert("✨ 申请已提交！AstroCompute 空间调度中枢正在为您分配轨道量子光子算力节点，我们将在 24 小时内向您的科研机构邮箱发送太赫兹上行密钥。");
+        }
+
+        function switchCluster(type) {
+            const tabs = document.querySelectorAll('.console-tab');
+            tabs.forEach(t => t.classList.remove('active'));
+            event.target.classList.add('active');
+            
+            const n1 = document.getElementById('node1-load');
+            const n2 = document.getElementById('node2-load');
+            const n3 = document.getElementById('node3-load');
+
+            if (type === 'lunar') {
+                n1.innerText = "96%";
+                n2.innerText = "89%";
+                n3.innerText = "94%";
+            } else if (type === 'mars') {
+                n1.innerText = "72%";
+                n2.innerText = "68%";
+                n3.innerText = "81%";
+            } else {
+                n1.innerText = "92%";
+                n2.innerText = "78%";
+                n3.innerText = "85%";
+            }
+        }
+    </script>
+</body>
+</html>

@@ -1,0 +1,87 @@
+name: Docker Build (Standalone / No-DB)
+
+on:
+  push:
+    branches: [ "main" ]
+    paths-ignore:
+      - "**.md"
+  pull_request:
+    branches: [ "main" ]
+  workflow_dispatch:
+    inputs:
+      image_tag:
+        description: "自定义镜像标签 (选填，默认为 standalone)"
+        required: false
+        default: "standalone"
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ${{ github.repository }}
+
+jobs:
+  build-and-push-standalone:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+      - name: 检出代码
+        uses: actions/checkout@v4
+
+      - name: 设置 Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: 登录 GitHub Container Registry (GHCR)
+        if: github.event_name != 'pull_request'
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: 提取 Docker 镜像元数据 (无数据库版)
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          tags: |
+            type=raw,value=standalone
+            type=raw,value=latest-nodb
+            type=raw,value=${{ inputs.image_tag }},enable=${{ github.event_name == 'workflow_dispatch' && inputs.image_tag != '' }}
+            type=sha,prefix=standalone-
+          labels: |
+            org.opencontainers.image.title=Magic Toys (Standalone / No-DB)
+            org.opencontainers.image.description=Magic Toys 独立轻量运行版，不包含数据库连接依赖与配置
+
+      - name: 本地构建与独立运行健康验证 (无数据库模式)
+        run: |
+          echo ">>> 正在构建无数据库模式验证镜像..."
+          docker build -t test-standalone-image:local .
+          
+          echo ">>> 启动容器 (纯单机内存/本地文件存储模式，不注入任何数据库环境配置)..."
+          docker run -d --name test-standalone -p 3000:3000 \
+            -e PORT=3000 \
+            -e SETTINGS_STORE="" \
+            test-standalone-image:local
+          
+          echo ">>> 等待服务就绪并测试访问..."
+          sleep 3
+          
+          HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" http://localhost:3000/ || true)
+          echo "HTTP 响应状态码: $HTTP_CODE"
+          
+          docker logs test-standalone
+          docker stop test-standalone
+          docker rm test-standalone
+
+      - name: 构建并推送 Docker 镜像 (GHCR)
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: ./Dockerfile
+          push: ${{ github.event_name != 'pull_request' }}
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
