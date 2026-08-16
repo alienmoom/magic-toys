@@ -1429,26 +1429,34 @@ def build_link_list(config, name_part, modes=None, node_name=None):
                 # server_name（TLS 用 IP 握手导致超时）。这里同时输出
                 # serviceName 与 path（值一致），并附加 mode=gun 和 authority，兼容 Karing/sing-box/Xray/v2rayNG。
                 path_param = f"serviceName={API_PATH}&path=%2F{API_PATH}&mode=gun&authority={config['tlsDomain']}"
+                transport = "grpc"
             elif conn == "ws":
                 path_param = f"path=%2F{API_PATH}"
+                transport = "ws"
             else:
-                # XHTTP 节点必须带 extra padding 配置，否则客户端不启用 padding。
-                # extra 用 Base64URL 编码（sing-box-extended/Karing 的解析格式），
-                # 字段同时兼容 Xray（xPaddingObfsMode 等）与 sing-box-extended（xPaddingBytes）。
-                padding_header, padding_key = _xhttp_padding_ident(APP_KEY)
-                padding_json = json.dumps({
-                    "xPaddingObfsMode": True,
-                    "xPaddingMethod": "tokenish",
-                    "xPaddingPlacement": "queryInHeader",
-                    "xPaddingHeader": padding_header,
-                    "xPaddingKey": padding_key,
-                    "xPaddingBytes": "100-1000",
-                }, separators=(",", ":"))
-                padding_b64 = base64.urlsafe_b64encode(padding_json.encode("utf-8")).decode("ascii").rstrip("=")
-                path_param = (
-                    f"path=%2F{API_PATH}&mode={MODE_FLOW}"
-                    f"&extra={padding_b64}"
-                )
+                # XHTTP / HTTP 传输：
+                # VLESS 原生支持 Xray v1.8.16+ xhttp (splithttp) 传输及 extra padding；
+                # Trojan 在 Xray / sing-box / Karing 中标准 HTTP/2 传输标识为 type=http 或 h2，
+                # 若填入 xhttp 会被客户端 trojan 解析器忽略而退化为纯 TCP，导致无法连接。
+                if proto == "b":
+                    transport = "http"
+                    path_param = f"path=%2F{API_PATH}"
+                else:
+                    transport = "xhttp"
+                    padding_header, padding_key = _xhttp_padding_ident(APP_KEY)
+                    padding_json = json.dumps({
+                        "xPaddingObfsMode": True,
+                        "xPaddingMethod": "tokenish",
+                        "xPaddingPlacement": "queryInHeader",
+                        "xPaddingHeader": padding_header,
+                        "xPaddingKey": padding_key,
+                        "xPaddingBytes": "100-1000",
+                    }, separators=(",", ":"))
+                    padding_b64 = base64.urlsafe_b64encode(padding_json.encode("utf-8")).decode("ascii").rstrip("=")
+                    path_param = (
+                        f"path=%2F{API_PATH}&mode={MODE_FLOW}"
+                        f"&extra={padding_b64}"
+                    )
             if proto == "a":
                 base = f"{SCHEME_A}://{APP_KEY}@{config['address']}:{config['port']}"
                 base_params = [f"encryption=none"]
@@ -1464,6 +1472,8 @@ def build_link_list(config, name_part, modes=None, node_name=None):
                 f"host={config['tlsDomain']}",
                 path_param,
             ]
+            if proto == "b" and transport == "http":
+                query.append("headerType=http")
             if allow_insecure:
                 query.append("allowInsecure=1")
             urls.append(f"{base}?{'&'.join(query)}#{link_name}")
