@@ -1469,85 +1469,6 @@ def build_link_list(config, name_part, modes=None, node_name=None):
     return urls
 
 
-def build_singbox_json(configs, name_part, modes=None, node_name=None):
-    modes = modes or {}
-    proto_modes = modes.get("proto") or DEFAULT_MODES
-    conn_modes = modes.get("conn") or DEFAULT_CONN_MODES
-    eff_name = (node_name if node_name is not None
-                else ((get_advices_config().get("name") if get_advices_config() else None) or NAME or "")).strip()
-    outbounds = []
-    
-    for config in configs:
-        excluded = set(config.get("excluded") or [])
-        active_protos = [p for p in ("a", "b") if proto_modes.get(p) and p not in excluded]
-        active_conns = [c for c in ("ws", "grpc", "xhttp") if conn_modes.get(c)]
-        for proto in ("a", "b"):
-            if not proto_modes.get(proto) or proto in excluded:
-                continue
-            for conn in ("ws", "grpc", "xhttp"):
-                if not conn_modes.get(conn):
-                    continue
-                proto_tag = "VLESS" if proto == "a" else "Trojan"
-                parts = [eff_name] if eff_name else []
-                parts.append(config['label'])
-                if len(active_protos) > 1 or len(active_conns) > 1:
-                    parts.append(proto_tag)
-                if len(active_conns) > 1:
-                    parts.append(conn.upper())
-                parts.append(name_part)
-                link_name = "-".join(parts)
-                
-                tls_obj = None
-                if config.get("tls", True):
-                    tls_obj = {
-                        "enabled": True,
-                        "server_name": config["tlsDomain"],
-                        "insecure": bool(config.get("allowInsecure")),
-                        "utls": {
-                            "enabled": True,
-                            "fingerprint": "chrome"
-                        }
-                    }
-                
-                outbound = {
-                    "type": "vless" if proto == "a" else "trojan",
-                    "tag": link_name,
-                    "server": config["address"],
-                    "server_port": int(config["port"]),
-                }
-                if proto == "a":
-                    outbound["uuid"] = APP_KEY
-                    outbound["packet_encoding"] = "xudp"
-                else:
-                    outbound["password"] = APP_KEY
-                    
-                if tls_obj:
-                    outbound["tls"] = tls_obj
-                    
-                if conn == "grpc":
-                    outbound["transport"] = {
-                        "type": "grpc",
-                        "service_name": API_PATH
-                    }
-                elif conn == "ws":
-                    outbound["transport"] = {
-                        "type": "ws",
-                        "path": f"/{API_PATH}",
-                        "headers": {
-                            "Host": config["tlsDomain"]
-                        }
-                    }
-                elif conn == "xhttp":
-                    outbound["transport"] = {
-                        "type": "http",
-                        "path": f"/{API_PATH}",
-                        "host": [config["tlsDomain"]]
-                    }
-                outbounds.append(outbound)
-                
-    return json.dumps({"outbounds": outbounds}, indent=2, ensure_ascii=False)
-
-
 class BodyReader:
     async def read(self, n):
         raise NotImplementedError
@@ -2009,14 +1930,6 @@ async def _handle_feed(req):
     modes = get_advices_config()["modes"]
     conn_modes = modes.get("conn") or DEFAULT_CONN_MODES
     proto_modes = modes.get("proto") or DEFAULT_MODES
-
-    # 如果连接方式为 gRPC 且启用了 VLESS 或 Trojan，则默认输出 Sing-box 原生 JSON 订阅
-    if conn_modes.get("grpc") and (proto_modes.get("a") or proto_modes.get("b")):
-        json_content = build_singbox_json(configs, _isp, modes)
-        body = json_content.encode("utf-8")
-        await send_simple(req.writer, 200, "OK",
-                          [("Content-Type", "application/json; charset=utf-8")], body)
-        return
 
     urls = []
     for config in configs:
