@@ -641,7 +641,7 @@ def _pg_connect():
         password=_DB_FROM_URL["password"],
         dbname=_DB_FROM_URL["name"],
         sslmode=True,
-        timeout=15,
+        timeout=5,
     )
     client.connect()
     with client.cursor() as cur:
@@ -649,20 +649,16 @@ def _pg_connect():
     return client
 
 
-def _db_connect():
+def _db_connect(timeout=5):
     if not DB_ENABLED or not _DB_FROM_URL:
         return None
-    for attempt in range(2):
-        try:
-            if DB_TYPE == "postgres":
-                return _pg_connect()
-            return _mysql_connect()
-        except Exception as e:
-            if attempt == 0:
-                time.sleep(1)
-                continue
-            _db_note_failure("connect", e)
-            return None
+    try:
+        if DB_TYPE == "postgres":
+            return _pg_connect()
+        return _mysql_connect()
+    except Exception as e:
+        _db_note_failure("connect", e)
+        return None
 
 
 def _db_get_config(key=None):
@@ -755,9 +751,12 @@ def _db_test_connection():
             "msg": f"数据库连接成功（{db_label}）{record_info}"
         }
     except Exception as exc:
+        err_str = str(exc)
+        if "timed out" in err_str.lower() or "timeout" in err_str.lower():
+            err_str = "连接超时（请检查网络或防火墙是否放行数据库端口）"
         return {
             "status": "failed",
-            "msg": f"连接失败，请检查数据库链接是否正确 (错误详情: {exc})"
+            "msg": f"连接失败，请检查数据库链接是否正确 (错误详情: {err_str})"
         }
 
 
