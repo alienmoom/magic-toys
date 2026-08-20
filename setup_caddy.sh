@@ -11,9 +11,14 @@ CADDY_FILE="/etc/caddy/Caddyfile"
 CONF_DIR="/etc/caddy"
 ENV_OVERRIDE="/etc/systemd/system/caddy.service.d/override.conf"
 CERT_DIR="/etc/caddy/certs"
-SCRIPT_PATH="$(readlink -f "$0")"
+SCRIPT_PATH="$(readlink -f "${BASH_SOURCE[0]:-$0}")"
 APP_DIR="/opt/magic-toys"
 SERVICE_FILE="/etc/systemd/system/magic-toys.service"
+AUTOUPDATE_CONF="/etc/caddy/autoupdate.conf"
+CRON_FILE="/etc/cron.d/magic-toys-autoupdate"
+VERSION_CACHE_FILE="/tmp/magic_toys_ver_cache"
+AUTOUPDATE_LOG_FILE="/var/log/magic-toys-autoupdate.log"
+SCRIPT_VERSION="v1.2.0"
 
 # 颜色定义
 RED='\033[0;31m'
@@ -279,6 +284,126 @@ get_app_service_status() {
     else
         echo -e "${RED}未安装 (Not Installed)${PLAIN}"
     fi
+}
+
+# 获取本地 Caddy 版本
+get_local_caddy_version() {
+    if command -v caddy &>/dev/null; then
+        local ver=$(caddy version 2>/dev/null | head -n 1 | awk '{print $1}')
+        echo "${ver:-未知}"
+    else
+        echo "未安装"
+    fi
+}
+
+# 获取远端最新 Caddy 版本
+get_remote_caddy_version() {
+    local ver=""
+    ver=$(curl -s --connect-timeout 3 -m 5 https://api.github.com/repos/caddyserver/caddy/releases/latest 2>/dev/null | grep -oE '"tag_name":\s*"[^"]+"' | head -n 1 | cut -d'"' -f4)
+    if [ -z "$ver" ]; then
+        ver=$(curl -sIL --connect-timeout 3 -m 5 -o /dev/null -w '%{url_effective}' https://github.com/caddyserver/caddy/releases/latest 2>/dev/null | grep -oE 'v[0-9]+\.[0-9]+\.[0-9]+.*$' | head -n 1)
+    fi
+    echo "${ver:-未知}"
+}
+
+# 获取本地代理服务/脚本版本
+get_local_proxy_version() {
+    if [ -d "$APP_DIR/.git" ]; then
+        local commit=$(git -C "$APP_DIR" rev-parse --short HEAD 2>/dev/null)
+        echo "${commit:-已安装}"
+    elif [ -f "$APP_DIR/app.py" ]; then
+        echo "已部署"
+    else
+        echo "未安装"
+    fi
+}
+
+# 获取远端代理服务/脚本最新版本
+get_remote_proxy_version() {
+    local ver=""
+    ver=$(curl -s --connect-timeout 3 -m 5 https://api.github.com/repos/alienmoom/magic-toys/commits/main 2>/dev/null | grep -oE '"sha":\s*"[^"]+"' | head -n 1 | cut -d'"' -f4 | cut -c1-7)
+    if [ -z "$ver" ]; then
+        ver=$(git ls-remote --heads https://github.com/alienmoom/magic-toys.git main 2>/dev/null | awk '{print substr($1,1,7)}')
+    fi
+    echo "${ver:-未知}"
+}
+
+# 读取/缓存版本信息 (默认缓存有效期 900 秒，避免主菜单卡顿)
+get_version_info() {
+    local force_refresh="$1"
+    local now=$(date +%s)
+    local cache_valid=false
+
+    if [ "$force_refresh" != "true" ] && [ -f "$VERSION_CACHE_FILE" ]; then
+        local cache_time=$(grep -E "^CACHE_TIME=" "$VERSION_CACHE_FILE" 2>/dev/null | cut -d'=' -f2)
+        if [ -n "$cache_time" ] && [ $((now - cache_time)) -lt 900 ]; then
+            cache_valid=true
+        fi
+    fi
+
+    if [ "$cache_valid" = true ]; then
+        LOCAL_CADDY_VER=$(grep -E "^LOCAL_CADDY_VER=" "$VERSION_CACHE_FILE" 2>/dev/null | cut -d'=' -f2- | tr -d '"')
+        REMOTE_CADDY_VER=$(grep -E "^REMOTE_CADDY_VER=" "$VERSION_CACHE_FILE" 2>/dev/null | cut -d'=' -f2- | tr -d '"')
+        LOCAL_PROXY_VER=$(grep -E "^LOCAL_PROXY_VER=" "$VERSION_CACHE_FILE" 2>/dev/null | cut -d'=' -f2- | tr -d '"')
+        REMOTE_PROXY_VER=$(grep -E "^REMOTE_PROXY_VER=" "$VERSION_CACHE_FILE" 2>/dev/null | cut -d'=' -f2- | tr -d '"')
+    else
+        LOCAL_CADDY_VER=$(get_local_caddy_version)
+        REMOTE_CADDY_VER=$(get_remote_caddy_version)
+        LOCAL_PROXY_VER=$(get_local_proxy_version)
+        REMOTE_PROXY_VER=$(get_remote_proxy_version)
+
+        mkdir -p "$(dirname "$VERSION_CACHE_FILE")" 2>/dev/null || true
+        cat > "$VERSION_CACHE_FILE" 2>/dev/null << EOF
+CACHE_TIME=${now}
+LOCAL_CADDY_VER="${LOCAL_CADDY_VER}"
+REMOTE_CADDY_VER="${REMOTE_CADDY_VER}"
+LOCAL_PROXY_VER="${LOCAL_PROXY_VER}"
+REMOTE_PROXY_VER="${REMOTE_PROXY_VER}"
+EOF
+    fi
+}
+
+# 检查 Caddy 是否有新版本
+has_caddy_update() {
+    if [ -z "$LOCAL_CADDY_VER" ] || [ "$LOCAL_CADDY_VER" = "未安装" ] || [ "$REMOTE_CADDY_VER" = "未知" ] || [ -z "$REMOTE_CADDY_VER" ]; then
+        return 1
+    fi
+    if [ "$LOCAL_CADDY_VER" != "$REMOTE_CADDY_VER" ]; then
+        return 0
+    fi
+    return 1
+}
+
+# 检查 代理脚本 是否有新版本
+has_proxy_update() {
+    if [ -z "$LOCAL_PROXY_VER" ] || [ "$LOCAL_PROXY_VER" = "未安装" ] || [ "$REMOTE_PROXY_VER" = "未知" ] || [ -z "$REMOTE_PROXY_VER" ]; then
+        return 1
+    fi
+    if [ "$LOCAL_PROXY_VER" != "$REMOTE_PROXY_VER" ] && [ "$LOCAL_PROXY_VER" != "已部署" ]; then
+        return 0
+    fi
+    return 1
+}
+
+# 获取当前自动更新模式 (none, caddy, proxy, all)
+get_auto_update_mode() {
+    if [ -f "$AUTOUPDATE_CONF" ]; then
+        local mode=$(grep -E "^AUTO_UPDATE_MODE=" "$AUTOUPDATE_CONF" 2>/dev/null | head -n 1 | cut -d'=' -f2 | tr -d '"' | tr -d "'")
+        echo "${mode:-none}"
+    else
+        echo "none"
+    fi
+}
+
+# 获取自动更新状态显示文本
+get_auto_update_display() {
+    local mode=$(get_auto_update_mode)
+    case "$mode" in
+        caddy) echo -e "${CYAN}已启用 (1.仅 Caddy 自动更新)${PLAIN}" ;;
+        proxy) echo -e "${CYAN}已启用 (2.仅 代理脚本 自动更新)${PLAIN}" ;;
+        all)   echo -e "${GREEN}已启用 (3.all 全部自动更新: Caddy + 代理脚本)${PLAIN}" ;;
+        none|*) echo -e "${YELLOW}未启用 (默认)${PLAIN}" ;;
+    esac
 }
 
 # 同步并整理证书文件到直观的 /etc/caddy/certs/<domain>/
@@ -1051,6 +1176,7 @@ do_full_uninstall() {
 
     echo -e "${YELLOW}>>> 正在清理配置文件与证书数据...${PLAIN}"
     rm -rf "$CONF_DIR" "/var/lib/caddy" "/etc/systemd/system/caddy.service.d"
+    rm -f "$CRON_FILE" "$AUTOUPDATE_CONF" "$VERSION_CACHE_FILE" /var/log/magic-toys-autoupdate.log
 
     echo -e "${YELLOW}>>> 正在移除全局 toy 快捷命令...${PLAIN}"
     rm -f /usr/local/bin/toy
@@ -1100,6 +1226,7 @@ do_uninstall_keep_certs() {
     fi
     rm -f /usr/bin/caddy /usr/local/bin/caddy
     rm -f /usr/local/bin/toy
+    rm -f "$CRON_FILE"
 
     systemctl daemon-reload
     echo -e "\n${GREEN}✔ 服务已成功卸载！${PLAIN}"
@@ -1172,6 +1299,340 @@ manage_caddy_service() {
 }
 
 # ==============================================================================
+# 模块 7：脚本更新 (1.更新Caddy，2.更新代理脚本，3.自动更新配置)
+# ==============================================================================
+manage_updates() {
+    while true; do
+        clear
+        echo -e "${CYAN}====================================================${PLAIN}"
+        echo -e "${CYAN}    7. 脚本更新                                     ${PLAIN}"
+        echo -e "${CYAN}====================================================${PLAIN}"
+        get_version_info "false"
+
+        local caddy_tip="${GREEN}(最新)${PLAIN}"
+        if has_caddy_update; then
+            caddy_tip="${YELLOW}[发现新版本: ${REMOTE_CADDY_VER}]${PLAIN}"
+        fi
+
+        local proxy_tip="${GREEN}(最新)${PLAIN}"
+        if has_proxy_update; then
+            proxy_tip="${YELLOW}[发现新版本: ${REMOTE_PROXY_VER}]${PLAIN}"
+        fi
+
+        echo -e "【当前组件版本状态】"
+        echo -e "  • Caddy 服务      : 当前 ${CYAN}${LOCAL_CADDY_VER}${PLAIN} ${caddy_tip}"
+        echo -e "  • Magic Toys 代理: 当前 ${CYAN}${LOCAL_PROXY_VER}${PLAIN} ${proxy_tip}"
+        echo -e "  • 自动更新状态    : $(get_auto_update_display)"
+        echo -e "----------------------------------------------------"
+        echo -e " ${GREEN}1.${PLAIN} 更新 Caddy"
+        echo -e " ${GREEN}2.${PLAIN} 更新代理脚本"
+        echo -e " ${GREEN}3.${PLAIN} 自动更新配置"
+        echo -e " ${BLUE}0.${PLAIN} 返回主菜单"
+        echo -e "===================================================="
+        read -rp "请输入选项 [0-3]: " update_choice
+
+        case "$update_choice" in
+            1)
+                update_caddy_component
+                ;;
+            2)
+                update_proxy_app_component
+                ;;
+            3)
+                configure_auto_update
+                ;;
+            0)
+                break
+                ;;
+            *)
+                echo -e "${RED}输入无效，请重新输入！${PLAIN}"
+                sleep 1
+                ;;
+        esac
+    done
+}
+
+# 7.1 更新 Caddy
+update_caddy_component() {
+    clear
+    echo -e "${CYAN}====================================================${PLAIN}"
+    echo -e "${CYAN}    1. 更新 Caddy 服务                              ${PLAIN}"
+    echo -e "${CYAN}====================================================${PLAIN}"
+    echo -e "${YELLOW}>>> 正在获取 Caddy 最新版本信息...${PLAIN}"
+    get_version_info "true"
+    echo -e "当前本地版本: ${GREEN}${LOCAL_CADDY_VER}${PLAIN}"
+    echo -e "远端最新版本: ${GREEN}${REMOTE_CADDY_VER}${PLAIN}"
+    echo -e "----------------------------------------------------"
+
+    if [ "$LOCAL_CADDY_VER" = "$REMOTE_CADDY_VER" ] && [ "$REMOTE_CADDY_VER" != "未知" ]; then
+        echo -e "${GREEN}✔ 当前 Caddy 已是最新版本 (${LOCAL_CADDY_VER})！${PLAIN}"
+        read -rp "是否仍然强制重新下载安装？(y/n): " force_update
+        if [ "$force_update" != "y" ] && [ "$force_update" != "Y" ]; then
+            return
+        fi
+    fi
+
+    echo -e "${YELLOW}>>> 正在检查并更新 Caddy...${PLAIN}"
+    local has_cf=false
+    if command -v caddy &>/dev/null && caddy list-modules 2>/dev/null | grep -q "dns.providers.cloudflare"; then
+        has_cf=true
+    fi
+
+    if [ "$has_cf" = true ]; then
+        echo -e "${CYAN}>>> 检测到已集成 Cloudflare DNS 插件，正在获取插件版最新二进制...${PLAIN}"
+        local arch="$(uname -m)"
+        local caddy_arch="amd64"
+        case "$arch" in
+            x86_64) caddy_arch="amd64" ;;
+            aarch64|arm64) caddy_arch="arm64" ;;
+            armv7l) caddy_arch="armv7" ;;
+            s390x) caddy_arch="s390x" ;;
+            riscv64) caddy_arch="riscv64" ;;
+            *) caddy_arch="$arch" ;;
+        esac
+
+        local downloaded=false
+        if curl -sLf "https://caddyserver.com/api/download?os=linux&arch=${caddy_arch}&p=github.com%2Fcaddy-dns%2Fcloudflare" -o /tmp/caddy_cf; then
+            chmod +x /tmp/caddy_cf
+            if /tmp/caddy_cf list-modules 2>/dev/null | grep -q "dns.providers.cloudflare"; then
+                systemctl stop caddy 2>/dev/null || true
+                cp -f /tmp/caddy_cf /usr/bin/caddy
+                chmod +x /usr/bin/caddy
+                setcap 'cap_net_bind_service=+ep' /usr/bin/caddy 2>/dev/null || true
+                rm -f /tmp/caddy_cf
+                downloaded=true
+            fi
+        fi
+
+        if [ "$downloaded" = false ]; then
+            echo -e "${YELLOW}>>> 官方预编译 API 下载未成功，尝试通过 caddy upgrade 或 xcaddy 更新...${PLAIN}"
+            caddy upgrade 2>/dev/null || install_caddy_cf_plugin
+        fi
+    else
+        echo -e "${CYAN}>>> 正在更新标准版 Caddy...${PLAIN}"
+        if command -v apt &> /dev/null; then
+            apt update && apt install --only-upgrade -y caddy 2>/dev/null || caddy upgrade 2>/dev/null || true
+        elif command -v dnf &> /dev/null; then
+            dnf upgrade -y caddy 2>/dev/null || caddy upgrade 2>/dev/null || true
+        else
+            caddy upgrade 2>/dev/null || true
+        fi
+    fi
+
+    setcap 'cap_net_bind_service=+ep' /usr/bin/caddy 2>/dev/null || true
+    systemctl daemon-reload 2>/dev/null || true
+    systemctl restart caddy 2>/dev/null || true
+
+    get_version_info "true"
+    echo -e "\n${GREEN}✔ Caddy 更新完成！当前版本: $(get_local_caddy_version)${PLAIN}"
+    read -rp "按回车键继续..."
+}
+
+# 7.2 更新代理脚本
+update_proxy_app_component() {
+    clear
+    echo -e "${CYAN}====================================================${PLAIN}"
+    echo -e "${CYAN}    2. 更新代理脚本与管理向导                       ${PLAIN}"
+    echo -e "${CYAN}====================================================${PLAIN}"
+    echo -e "${YELLOW}>>> 正在获取代理脚本最新版本信息...${PLAIN}"
+    get_version_info "true"
+    echo -e "当前本地版本: ${GREEN}${LOCAL_PROXY_VER}${PLAIN}"
+    echo -e "远端最新版本: ${GREEN}${REMOTE_PROXY_VER}${PLAIN}"
+    echo -e "----------------------------------------------------"
+
+    # 1. 更新项目代码
+    if [ -d "$APP_DIR" ]; then
+        echo -e "${YELLOW}>>> 正在更新 Magic Toys 代理服务代码 (${APP_DIR})...${PLAIN}"
+        if [ -d "$APP_DIR/.git" ]; then
+            cd "$APP_DIR"
+            git fetch --all 2>/dev/null || true
+            git reset --hard origin/main 2>/dev/null || git pull 2>/dev/null || true
+        else
+            echo -e "${YELLOW}>>> 正在同步最新源码文件...${PLAIN}"
+            curl -sLf "https://raw.githubusercontent.com/alienmoom/magic-toys/main/app.py" -o "$APP_DIR/app.py" 2>/dev/null || true
+            curl -sLf "https://raw.githubusercontent.com/alienmoom/magic-toys/main/index.html" -o "$APP_DIR/index.html" 2>/dev/null || true
+            curl -sLf "https://raw.githubusercontent.com/alienmoom/magic-toys/main/requirements.txt" -o "$APP_DIR/requirements.txt" 2>/dev/null || true
+        fi
+
+        # 更新 Python 依赖
+        if [ -d "$APP_DIR/venv" ] && [ -f "$APP_DIR/requirements.txt" ]; then
+            echo -e "${YELLOW}>>> 正在更新 Python 虚拟环境依赖...${PLAIN}"
+            "$APP_DIR/venv/bin/pip" install --upgrade pip 2>/dev/null || true
+            "$APP_DIR/venv/bin/pip" install -r "$APP_DIR/requirements.txt" 2>/dev/null || true
+        fi
+
+        # 重启服务
+        if systemctl is-active --quiet magic-toys 2>/dev/null; then
+            echo -e "${YELLOW}>>> 正在重启 Magic Toys 代理服务...${PLAIN}"
+            systemctl restart magic-toys 2>/dev/null || true
+        fi
+        echo -e "${GREEN}✔ Magic Toys 代理服务代码更新完成！${PLAIN}"
+    else
+        echo -e "${YELLOW}提示: 未检测到已安装的代理服务 (${APP_DIR})，跳过项目代码更新。${PLAIN}"
+    fi
+
+    # 2. 更新管理向导脚本自身
+    echo -e "\n${YELLOW}>>> 正在更新一键向导脚本 (toy)...${PLAIN}"
+    local tmp_script="/tmp/setup_caddy_new.sh"
+    if curl -sLf "https://raw.githubusercontent.com/alienmoom/magic-toys/main/setup_caddy.sh" -o "$tmp_script"; then
+        if [ -s "$tmp_script" ] && grep -q "Magic Toys" "$tmp_script"; then
+            cp -f "$tmp_script" /usr/local/bin/toy
+            chmod +x /usr/local/bin/toy
+            if [ -f "$SCRIPT_PATH" ]; then
+                cp -f "$tmp_script" "$SCRIPT_PATH"
+                chmod +x "$SCRIPT_PATH"
+            fi
+            rm -f "$tmp_script"
+            echo -e "${GREEN}✔ 管理向导脚本已成功更新至最新版！${PLAIN}"
+        else
+            echo -e "${RED}✖ 下载的向导脚本内容异常，跳过脚本替换。${PLAIN}"
+            rm -f "$tmp_script"
+        fi
+    else
+        echo -e "${RED}✖ 无法从 GitHub 下载最新向导脚本，请检查网络连接！${PLAIN}"
+    fi
+
+    get_version_info "true"
+    echo -e "\n${GREEN}✔ 代理脚本与管理向导更新全部完成！${PLAIN}"
+    read -rp "按回车键继续..."
+}
+
+# 7.3 自动更新配置
+configure_auto_update() {
+    while true; do
+        clear
+        echo -e "${CYAN}====================================================${PLAIN}"
+        echo -e "${CYAN}    3. 自动更新配置                                 ${PLAIN}"
+        echo -e "${CYAN}====================================================${PLAIN}"
+        echo -e "当前自动更新状态: $(get_auto_update_display)"
+        echo -e "\n${YELLOW}说明：${PLAIN}"
+        echo -e "• 启用后将通过系统计划任务 (cron) 每天凌晨 03:30 自动检测并升级。"
+        echo -e "• 自动更新执行日志将保存至 ${CYAN}/var/log/magic-toys-autoupdate.log${PLAIN}。"
+        echo -e "• 默认状态为【4. 不启用自动更新】。\n"
+        echo -e "----------------------------------------------------"
+        echo -e " ${GREEN}1.${PLAIN} Caddy 自动检测并自动更新"
+        echo -e " ${GREEN}2.${PLAIN} 代理脚本自动检测并自动更新"
+        echo -e " ${GREEN}3.${PLAIN} all (全部自动检测并自动更新)"
+        echo -e " ${RED}4.${PLAIN} 不启用自动更新 (默认)"
+        echo -e " ${BLUE}0.${PLAIN} 返回上一级"
+        echo -e "===================================================="
+        read -rp "请输入选项 [0-4]: " auto_choice
+
+        case "$auto_choice" in
+            1)
+                set_auto_update_mode "caddy"
+                ;;
+            2)
+                set_auto_update_mode "proxy"
+                ;;
+            3)
+                set_auto_update_mode "all"
+                ;;
+            4)
+                set_auto_update_mode "none"
+                ;;
+            0)
+                break
+                ;;
+            *)
+                echo -e "${RED}输入无效，请重新输入！${PLAIN}"
+                sleep 1
+                ;;
+        esac
+    done
+}
+
+# 设置自动更新模式与配置 cron 定时任务
+set_auto_update_mode() {
+    local mode="$1"
+    mkdir -p "$(dirname "$AUTOUPDATE_CONF")"
+    cat > "$AUTOUPDATE_CONF" << EOF
+# Magic Toys 自动更新配置文件
+AUTO_UPDATE_MODE="${mode}"
+EOF
+
+    if [ "$mode" = "none" ]; then
+        rm -f "$CRON_FILE"
+        echo -e "\n${YELLOW}✔ 已关闭自动更新功能！${PLAIN}"
+    else
+        mkdir -p "/etc/cron.d"
+        cat > "$CRON_FILE" << EOF
+# Magic Toys 定时自动更新任务 (每天凌晨 03:30 触发检测与升级)
+30 3 * * * root /usr/local/bin/toy --auto-update >/dev/null 2>&1
+EOF
+        chmod 644 "$CRON_FILE"
+        case "$mode" in
+            caddy) echo -e "\n${GREEN}✔ 自动更新配置成功！已开启【Caddy 自动检测并自动更新】(每天 03:30 自动执行)${PLAIN}" ;;
+            proxy) echo -e "\n${GREEN}✔ 自动更新配置成功！已开启【代理脚本 自动检测并自动更新】(每天 03:30 自动执行)${PLAIN}" ;;
+            all)   echo -e "\n${GREEN}✔ 自动更新配置成功！已开启【全部组件(all) 自动检测并自动更新】(每天 03:30 自动执行)${PLAIN}" ;;
+        esac
+    fi
+    read -rp "按回车键继续..."
+}
+
+# 静默执行自动更新检测与升级 (供 Cron 定时任务调用)
+run_auto_update_cron() {
+    local log_file="${AUTOUPDATE_LOG_FILE:-/var/log/magic-toys-autoupdate.log}"
+    mkdir -p "$(dirname "$log_file")" 2>/dev/null || log_file="/tmp/magic-toys-autoupdate.log"
+    local time_now=$(date '+%Y-%m-%d %H:%M:%S')
+    echo "==================================================" >> "$log_file" 2>/dev/null || log_file="/tmp/magic-toys-autoupdate.log"
+    echo "[${time_now}] 开始执行 Magic Toys 自动更新检测任务..." >> "$log_file" 2>/dev/null || true
+
+    local mode=$(get_auto_update_mode)
+    echo "[${time_now}] 当前自动更新模式: ${mode}" >> "$log_file" 2>/dev/null || true
+
+    if [ "$mode" = "none" ]; then
+        echo "[${time_now}] 自动更新未启用，跳过更新。" >> "$log_file"
+        return 0
+    fi
+
+    get_version_info "true"
+
+    if [ "$mode" = "caddy" ] || [ "$mode" = "all" ]; then
+        if has_caddy_update; then
+            echo "[${time_now}] 检测到 Caddy 新版本 (${LOCAL_CADDY_VER} -> ${REMOTE_CADDY_VER})，正在自动升级..." >> "$log_file"
+            local arch="$(uname -m)"
+            local caddy_arch="amd64"
+            case "$arch" in
+                x86_64) caddy_arch="amd64" ;;
+                aarch64|arm64) caddy_arch="arm64" ;;
+                *) caddy_arch="$arch" ;;
+            esac
+            if curl -sLf "https://caddyserver.com/api/download?os=linux&arch=${caddy_arch}&p=github.com%2Fcaddy-dns%2Fcloudflare" -o /tmp/caddy_cf; then
+                chmod +x /tmp/caddy_cf
+                systemctl stop caddy 2>/dev/null || true
+                cp -f /tmp/caddy_cf /usr/bin/caddy
+                chmod +x /usr/bin/caddy
+                setcap 'cap_net_bind_service=+ep' /usr/bin/caddy 2>/dev/null || true
+                rm -f /tmp/caddy_cf
+                systemctl restart caddy 2>/dev/null || true
+                echo "[${time_now}] Caddy 自动升级成功！" >> "$log_file"
+            fi
+        else
+            echo "[${time_now}] Caddy 已是最新版本 (${LOCAL_CADDY_VER})。" >> "$log_file"
+        fi
+    fi
+
+    if [ "$mode" = "proxy" ] || [ "$mode" = "all" ]; then
+        if has_proxy_update; then
+            echo "[${time_now}] 检测到代理脚本新版本 (${LOCAL_PROXY_VER} -> ${REMOTE_PROXY_VER})，正在自动升级..." >> "$log_file"
+            if [ -d "$APP_DIR/.git" ]; then
+                cd "$APP_DIR" && git fetch --all 2>/dev/null && git reset --hard origin/main 2>/dev/null || true
+                if [ -d "$APP_DIR/venv" ] && [ -f "$APP_DIR/requirements.txt" ]; then
+                    "$APP_DIR/venv/bin/pip" install -r "$APP_DIR/requirements.txt" 2>/dev/null || true
+                fi
+                systemctl restart magic-toys 2>/dev/null || true
+            fi
+            curl -sLf "https://raw.githubusercontent.com/alienmoom/magic-toys/main/setup_caddy.sh" -o /usr/local/bin/toy 2>/dev/null && chmod +x /usr/local/bin/toy
+            echo "[${time_now}] 代理脚本与管理向导自动升级成功！" >> "$log_file"
+        else
+            echo "[${time_now}] 代理脚本已是最新版本 (${LOCAL_PROXY_VER})。" >> "$log_file"
+        fi
+    fi
+    echo "[${time_now}] 自动更新检测任务完成。" >> "$log_file"
+}
+
+# ==============================================================================
 # 主菜单循环
 # ==============================================================================
 main_menu() {
@@ -1185,12 +1646,25 @@ main_menu() {
         echo -e "${GREEN}        Magic Toys · 一键管理向导                   ${PLAIN}"
         echo -e "${YELLOW}       (随时输入 ${GREEN}toy${YELLOW} 即可再次唤醒本向导)          ${PLAIN}"
         echo -e "${CYAN}====================================================${PLAIN}"
+        get_version_info "false"
         local current_listen=$(get_listen_ports_summary)
         local current_backend=$(get_backend_port)
         echo -e "Caddy当前监听端口: ${GREEN}${current_listen}${PLAIN}"
         echo -e "当前内部转发端口: ${GREEN}${current_backend}${PLAIN} (h2c 转发至 127.0.0.1:${current_backend})"
         echo -e "当前已配域名数量: ${GREEN}$(get_configured_domains | wc -w)${PLAIN}"
         echo -e "代理服务运行状态: $(get_app_service_status)"
+        echo -e "自动更新配置状态: $(get_auto_update_display)"
+
+        local push_msg=""
+        if has_caddy_update; then
+            push_msg="${push_msg} Caddy(${LOCAL_CADDY_VER} -> ${REMOTE_CADDY_VER})"
+        fi
+        if has_proxy_update; then
+            push_msg="${push_msg} 代理脚本(${LOCAL_PROXY_VER} -> ${REMOTE_PROXY_VER})"
+        fi
+        if [ -n "$push_msg" ]; then
+            echo -e "${YELLOW}★ 新版本推送提示 : 发现新版本:${push_msg} (可在选项 7 升级)${PLAIN}"
+        fi
         echo -e "----------------------------------------------------"
         echo -e " ${GREEN}1.${PLAIN} Caddy 端口配置与流量转发 (对内/对外)"
         echo -e " ${GREEN}2.${PLAIN} 证书与域名管理 (CF Token / HTTP / 自签 / 删除)"
@@ -1198,9 +1672,10 @@ main_menu() {
         echo -e " ${GREEN}4.${PLAIN} 卸载向导与环境清理 ${RED}(1.完全卸载，2.保留域名证书卸载)${PLAIN}"
         echo -e " ${GREEN}5.${PLAIN} 查看系统运行状态与实时日志 (Caddy & 代理服务)"
         echo -e " ${GREEN}6.${PLAIN} 启动 / 停止 / 重启服务"
+        echo -e " ${GREEN}7.${PLAIN} 脚本更新 ${PURPLE}(1.更新Caddy，2.更新代理脚本，3.自动更新配置)${PLAIN}"
         echo -e " ${RED}0.${PLAIN} 退出向导"
         echo -e "===================================================="
-        read -rp "请输入操作编号 [0-6]: " choice
+        read -rp "请输入操作编号 [0-7]: " choice
 
         case "$choice" in
             1)
@@ -1221,16 +1696,28 @@ main_menu() {
             6)
                 manage_caddy_service
                 ;;
+            7)
+                manage_updates
+                ;;
             0)
                 echo -e "${GREEN}感谢使用 Magic Toys！在终端输入 ${YELLOW}toy${GREEN} 即可随时再次打开本向导。${PLAIN}"
                 exit 0
                 ;;
             *)
-                echo -e "${RED}输入有误，请输入 0-6 之间的数字！${PLAIN}"
+                echo -e "${RED}输入有误，请输入 0-7 之间的数字！${PLAIN}"
                 sleep 1
                 ;;
         esac
     done
 }
 
-main_menu
+if [ "${BASH_SOURCE[0]}" = "${0}" ]; then
+    if [ "$1" = "--auto-update" ] || [ "$1" = "-u" ]; then
+        run_auto_update_cron
+        exit 0
+    fi
+
+    main_menu
+else
+    return 0 2>/dev/null || true
+fi
