@@ -108,7 +108,13 @@ docker run -d --name magic-toys --restart always -p 3000:3000 \
   - **WebSocket (WS)**：穿透力强，完美兼容 CDN / Cloudflare。
   - **gRPC (HTTP/2)**：低延迟、高并发传输（内置 h2c 协议优化）。
   - **XHTTP**：新型流传输，支持动态 Padding 与分块传输。
-- **多种存储模式**：支持纯内存运行、本地 JSON 持久化（`config.json`），以及 **MySQL** / **PostgreSQL** 远程数据库同步。
+- **多种存储与云端多实例隔离模式**：
+  - **单机本地模式**：无需数据库，自动持久化至本地 JSON（`config.json`）。
+  - **云端多实例隔离存储**：配置环境变量 `NAME` 与 `DATABASE_URL` 即可开启。多个不同平台/厂商的部署实例（如 `serv00_us`、`koyeb_sg`、`wasmer` 等）共用同一个云数据库，基于 `NAME` 独立隔离读写，互不覆盖。
+- **纯 Python 原生零依赖数据库驱动**：内置基于标准 socket 的轻量级 PostgreSQL (支持 SSL/TLS、MD5、SCRAM-SHA-256) 与 MySQL 驱动，无需安装任何第三方二进制库，完美适配 Neon、Supabase、TiDB Cloud、Aiven、RDS 等。
+- **可视化后台智能诊断**：
+  - **`NAME` 环境变量只读锁定**：通过环境变量注入的节点前缀在 `/settings` 中自动同步并锁定只读，防止误篡改。
+  - **一键检测数据库连接**：设置页自带检测按钮，毫秒级异步检测数据库连通性、网络握手与历史配置匹配状态。
 - **极致轻量**：极低内存占用（约 20~40MB），完美适配各类架构与小内存 VPS。
 
 ---
@@ -121,7 +127,7 @@ docker run -d --name magic-toys --restart always -p 3000:3000 \
 | :--- | :--- | :--- | :--- |
 | `APP_KEY` | string | 留空自动生成 | **核心身份 UUID / 鉴权密码**。<br>若留空，服务首次启动时将自动生成全新标准 UUID 并保存至 `config.json`；也可手动指定。 |
 | `PORT` | int | `3000` | 内部监听端口。在容器平台通常会自动映射或由平台指定。 |
-| `NAME` | string | 空 | **节点名称前缀**（如设置 `MyNode` 则节点显示为 `MyNode-连接 [VLESS-WS]`），可在 `/settings` 后台在线修改。 |
+| `NAME` | string | 空 | **节点名称前缀 / 数据库隔离主键**：<br>• 未配数据库时：作为节点名称前缀，可在 `/settings` 后台自由修改。<br>• 配置 `DATABASE_URL` 时：作为数据库隔离主键，并在 `/settings` 页面自动锁定只读。 |
 | `DIRECT_DOMAIN` | string | 空 | **直连域名/公网 IP**。生成订阅链接时作为直连目标地址。 |
 | `GATEWAY_DOMAIN` | string | 空 | **套 CDN 域名**。配合 Cloudflare 等 CDN 使用，订阅链接会将 Host/SNI 设为此域名。 |
 | `PREFERRED_IP` | string | 空 | **优选 IP/自定义连接地址**。在套 CDN 时，替换节点连接地址为优质 CDN 节点 IP。 |
@@ -139,12 +145,18 @@ docker run -d --name magic-toys --restart always -p 3000:3000 \
 | `CONN_GRPC_ENABLED`| bool | `false` | 是否启用 **gRPC (HTTP/2)** 传输模式。 |
 | `CONN_XHTTP_ENABLED`| bool | `false` | 是否启用 **XHTTP** 传输模式。 |
 
-### 3. 数据库与持久化配置
+### 3. 云端数据库与持久化配置 (多实例隔离)
 
-| 环境变量 | 类型 | 默认值 | 说明 |
+| 环境变量 | 类型 | 默认值 | 详细说明 |
 | :--- | :--- | :--- | :--- |
-| `SETTINGS_STORE` | string | 空 (文件/内存) | 设为 `database` 或 `db` 时开启远程数据库存储模式。 |
-| `DATABASE_URL` | string | 空 | 数据库连接 URL（支持 **PostgreSQL** 与 **MySQL**）。<br>• PG: `postgres://user:pass@host:5432/dbname`<br>• MySQL: `mysql://user:pass@host:3306/dbname` |
+| `DATABASE_URL` | string | 空 | 数据库连接 URL（支持 **PostgreSQL** 与 **MySQL**）。<br>• PG: `postgresql://user:pass@host:5432/dbname?sslmode=require`<br>• MySQL: `mysql://user:pass@host:3306/dbname`<br>💡 **注意**：只有当**同时配置了 `NAME` 与 `DATABASE_URL`** 时才会启用数据库存储。 |
+| `SETTINGS_STORE` | string | 空 (自动识别) | 可选。设为 `database` 或 `db`（通常配置了 `DATABASE_URL` 和 `NAME` 时会自动启用）。 |
+
+#### 💡 云端数据库连接检测与三种状态说明：
+在 `/settings` 页面中，`NAME` 输入框右侧设有 **【检测数据库连接】** 按钮，点击将实时反馈：
+1. **未完整配置**（缺少 `NAME` 或 `DATABASE_URL`）：提示 `未完整配置环境变量（缺少: ...），连接无法使用。`，此时保持本地模式；
+2. **连接成功**：提示 `数据库连接成功（PostgreSQL/MySQL）（已匹配到「xxx」的记录/暂无记录保存时追加）`；
+3. **连接失败**：提示 `连接失败，请检查数据库链接是否正确 (错误详情)`，快速排查网络防火墙或密码错误。
 
 ### 4. 哪吒监控面板集成 (Nezha)
 
