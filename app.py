@@ -227,10 +227,8 @@ def _parse_db_url(url):
 _DB_FROM_URL = _parse_db_url(DATABASE_URL)
 if _DB_FROM_URL:
     DB_TYPE = _DB_FROM_URL["kind"]
-DB_ENABLED = (
-    ADVICES_STORE in ("database", "db")
-    or bool(_DB_FROM_URL)
-)
+# 方案一：用户配置 NAME 和 DATABASE_URL 两个环境变量后，才启用数据库存储
+DB_ENABLED = bool(NAME and _DB_FROM_URL)
 
 
 SCHEME_A = "vle" + "ss"
@@ -667,15 +665,16 @@ def _db_connect():
             return None
 
 
-def _db_get_config():
+def _db_get_config(key=None):
     global _db_db_ok
     conn = _db_connect()
     if conn is None:
         _db_note_failure("connect")
         return None
+    actual_key = (key or NAME or "config").strip()
     try:
         with conn.cursor() as cur:
-            cur.execute("SELECT config_value FROM advices_config WHERE config_key = 'config'")
+            cur.execute("SELECT config_value FROM advices_config WHERE config_key = %s", (actual_key,))
             row = cur.fetchone()
         _db_db_ok = True
         return row[0] if row is not None else None
@@ -686,25 +685,26 @@ def _db_get_config():
         conn.close()
 
 
-def _db_set_config(payload):
+def _db_set_config(payload, key=None):
     global _db_db_ok
     conn = _db_connect()
     if conn is None:
         _db_note_failure("connect")
         return False
+    actual_key = (key or NAME or "config").strip()
     try:
         with conn.cursor() as cur:
             if DB_TYPE == "postgres":
                 cur.execute(
                     "INSERT INTO advices_config (config_key, config_value) VALUES (%s, %s) "
                     "ON CONFLICT (config_key) DO UPDATE SET config_value = EXCLUDED.config_value",
-                    ("config", json.dumps(payload, ensure_ascii=False)),
+                    (actual_key, json.dumps(payload, ensure_ascii=False)),
                 )
             else:
                 cur.execute(
                     "INSERT INTO advices_config (config_key, config_value) VALUES (%s, %s) "
                     "ON DUPLICATE KEY UPDATE config_value = VALUES(config_value)",
-                    ("config", json.dumps(payload, ensure_ascii=False)),
+                    (actual_key, json.dumps(payload, ensure_ascii=False)),
                 )
         conn.commit()
         _db_db_ok = True
@@ -714,6 +714,51 @@ def _db_set_config(payload):
         return False
     finally:
         conn.close()
+
+
+def _db_test_connection():
+    """检测数据库连接状态，分为三种情况：
+    1. unconfigured: 用户未完整配置 NAME 和 DATABASE_URL 环境变量，连接无法使用；
+    2. success: 连接成功（附带识别类型及是否已有当前 NAME 记录）；
+    3. failed: 连接失败，请检查数据库链接是否正确。
+    """
+    missing = []
+    if not (NAME or "").strip():
+        missing.append("NAME")
+    if not (DATABASE_URL or "").strip() or not _DB_FROM_URL:
+        missing.append("DATABASE_URL")
+    if missing:
+        return {
+            "status": "unconfigured",
+            "msg": f"未完整配置环境变量（缺少: {', '.join(missing)}），连接无法使用。"
+        }
+
+    try:
+        conn = _pg_connect() if DB_TYPE == "postgres" else _mysql_connect()
+        if conn is None:
+            return {
+                "status": "failed",
+                "msg": "连接失败，请检查数据库链接是否正确。"
+            }
+        has_record = False
+        try:
+            with conn.cursor() as cur:
+                cur.execute("SELECT 1 FROM advices_config WHERE config_key = %s", (NAME.strip(),))
+                has_record = bool(cur.fetchone())
+        except Exception:
+            pass
+        conn.close()
+        db_label = "PostgreSQL" if DB_TYPE == "postgres" else "MySQL"
+        record_info = f"（已存在「{NAME.strip()}」的配置记录，将直接读取）" if has_record else f"（暂无「{NAME.strip()}」的记录，保存时将追加新记录）"
+        return {
+            "status": "success",
+            "msg": f"数据库连接成功（{db_label}）{record_info}"
+        }
+    except Exception as exc:
+        return {
+            "status": "failed",
+            "msg": f"连接失败，请检查数据库链接是否正确 (错误详情: {exc})"
+        }
 
 
 def _normalize_advices_config(parsed, defaults):
@@ -796,13 +841,14 @@ def _normalize_advices_config(parsed, defaults):
 
 
 def load_advices_config():
+    effective_name = (NAME or "").strip()
     defaults = {
         "modes": {
             "conn": dict(DEFAULT_CONN_MODES),
             "proto": dict(DEFAULT_MODES),
         },
         "addresses": [PREFERRED_IP] if PREFERRED_IP else [],
-        "name": NAME or "",
+        "name": effective_name,
         "directDomain": DIRECT_DOMAIN or "",
         "directDomainTls": None,
         "gatewayDomain": GATEWAY_DOMAIN or "",
@@ -817,12 +863,12 @@ def load_advices_config():
     }
     parsed = None
     if DB_ENABLED:
-        db_value = _db_get_config()
+        db_value = _db_get_config(effective_name)
         if db_value is not None:
             try:
                 parsed = json.loads(db_value)
             except (ValueError, TypeError):
-                print("[advices] 数据库中的配置无效，正在使用默认配置", flush=True)
+                print(f"[advices] 数据库中「{effective_name}」的配置无效，正在使用默认配置", flush=True)
                 parsed = None
     if parsed is None:
         target_file = CONFIG_FILE
@@ -838,7 +884,10 @@ def load_advices_config():
                 parsed = file_value
         except (OSError, ValueError):
             parsed = None
-    return _normalize_advices_config(parsed, defaults)
+    cfg = _normalize_advices_config(parsed, defaults)
+    if effective_name:
+        cfg["name"] = effective_name
+    return cfg
 
 
 def get_advices_config():
@@ -850,8 +899,16 @@ def get_advices_config():
 
 def _write_advices_file(payload):
     try:
+        cfg_data = {}
+        if os.path.exists(CONFIG_FILE):
+            try:
+                with open(CONFIG_FILE, "r", encoding="utf-8") as f:
+                    cfg_data = json.load(f)
+            except Exception:
+                cfg_data = {}
+        cfg_data.update(payload)
         with open(CONFIG_FILE, "w", encoding="utf-8") as f:
-            json.dump(payload, f, ensure_ascii=False, indent=2)
+            json.dump(cfg_data, f, ensure_ascii=False, indent=2)
         return True
     except OSError as exc:
         print(f"[config] 本地文件保存失败: {exc}", flush=True)
@@ -861,6 +918,7 @@ def _write_advices_file(payload):
 def save_advices_config(modes, addresses, direct_domain, gateway_domain, auto_update=None,
                         direct_domain_tls=None, name=None):
     global _advices_config
+    effective_name = (NAME or name or (get_advices_config().get("name") if get_advices_config() else "") or "").strip()
     if auto_update is None:
         old = get_advices_config().get("autoUpdate") or {}
         auto_update = {
@@ -868,26 +926,27 @@ def save_advices_config(modes, addresses, direct_domain, gateway_domain, auto_up
             "intervalMinutes": old.get("intervalMinutes") or 720,
             "sources": dict(old.get("sources") or {}),
         }
-    node_name = (name if name is not None else (get_advices_config().get("name") or "")).strip()
     payload = {
         "modes": modes,
         "addresses": addresses,
-        "name": node_name,
+        "name": effective_name,
         "directDomain": direct_domain,
         "directDomainTls": direct_domain_tls,
         "gatewayDomain": gateway_domain,
         "autoUpdate": auto_update,
     }
     if DB_ENABLED:
-        if not _db_set_config(payload):
+        if not _db_set_config(payload, key=effective_name):
             return False
+        # 数据库写入成功后，同时将当前配置写入本地文件作为持久化备份
+        _write_advices_file(payload)
     else:
         if not _write_advices_file(payload):
             return False
     _advices_config = {
         "modes": modes,
         "addresses": addresses,
-        "name": node_name,
+        "name": effective_name,
         "directDomain": direct_domain,
         "directDomainTls": direct_domain_tls,
         "gatewayDomain": gateway_domain,
@@ -902,6 +961,7 @@ def save_advices_config(modes, addresses, direct_domain, gateway_domain, auto_up
 def persist_advices_config(cfg):
     """按完整配置对象直接持久化（自动更新任务使用），成功返回 True。"""
     global _advices_config
+    effective_name = (NAME or cfg.get("name") or "").strip()
     auto_update = cfg.get("autoUpdate") or {
         "enabled": False,
         "intervalMinutes": 720,
@@ -910,15 +970,16 @@ def persist_advices_config(cfg):
     payload = {
         "modes": cfg.get("modes"),
         "addresses": cfg.get("addresses") or [],
-        "name": (cfg.get("name") or "").strip(),
+        "name": effective_name,
         "directDomain": cfg.get("directDomain") or "",
         "directDomainTls": cfg.get("directDomainTls"),
         "gatewayDomain": cfg.get("gatewayDomain") or "",
         "autoUpdate": auto_update,
     }
-    ok = _db_set_config(payload) if DB_ENABLED else _write_advices_file(payload)
+    ok = _db_set_config(payload, key=effective_name) if DB_ENABLED else _write_advices_file(payload)
     if ok:
         _advices_config = dict(cfg)
+        _advices_config["name"] = effective_name
     return ok
 
 
@@ -1098,6 +1159,13 @@ def render_advices_page(saved, skipped, domain_error="", save_error=False, remov
     save_error_alert = ('<div class="alert-error">保存失败：无法连接数据库存储，'
                         '请配置 DATABASE_URL 环境变量后再试</div>') if save_error else ""
 
+    has_env_name = bool(NAME and NAME.strip())
+    name_readonly_attr = ' readonly class="readonly-input"' if has_env_name else ''
+    if has_env_name:
+        name_hint_text = '当前节点名称由环境变量 <code>NAME</code> 配置并同步，已锁定只读。'
+    else:
+        name_hint_text = '自定义订阅链接中各节点的前缀标识（如配置环境变量 <code>NAME</code> 和 <code>DATABASE_URL</code> 将启用数据库并锁定）。'
+
     template = r"""<!DOCTYPE html>
 <html lang="zh-CN">
 <head>
@@ -1120,6 +1188,14 @@ def render_advices_page(saved, skipped, domain_error="", save_error=False, remov
   .modes input { width:17px; height:17px; accent-color:var(--coral); cursor:pointer; }
   .hint { color:var(--muted); font-size:12px; margin:2px 0 10px; }
   .hint code { background:var(--paper); padding:1px 5px; border-radius:3px; font-size:12px; }
+  .name-bar { display:flex; gap:10px; margin-top:8px; align-items:stretch; }
+  .name-bar input[type=text] { flex:1; margin-top:0; }
+  .name-bar input.readonly-input { background:#eae8df; color:#4a544d; cursor:not-allowed; border-color:#cbcac0; }
+  .btn-test-db { flex:none; min-height:42px; padding:0 16px; font-size:13px; white-space:nowrap; }
+  .db-test-msg { margin-top:6px; font-size:12px; min-height:18px; line-height:1.5; }
+  .db-test-msg.success { color:#1d8a5c; font-weight:700; }
+  .db-test-msg.unconfigured { color:#9a5b1e; font-weight:700; }
+  .db-test-msg.failed { color:var(--coral-dark); font-weight:700; }
   .url-bar { display:flex; gap:8px; margin-top:4px; }
   .url-bar input[type=text] { flex:1; margin-top:0; }
   .url-bar button { min-height:40px; padding:0 16px; font-size:13px; }
@@ -1215,8 +1291,12 @@ def render_advices_page(saved, skipped, domain_error="", save_error=False, remov
     <fieldset>
       <legend>域名与节点设置</legend>
       <label class="field-label" for="node-name">节点名称前缀 (NAME)</label>
-      <input id="node-name" type="text" name="name" value="__NODE_NAME_TEXT__" spellcheck="false" placeholder="可选，如 djj（留空则不加前缀）">
-      <p class="hint">自定义订阅链接中各节点的前缀标识，留空则不加前缀。</p>
+      <div class="name-bar">
+        <input id="node-name" type="text" name="name" value="__NODE_NAME_TEXT__" spellcheck="false" placeholder="可选，如 djj（留空则不加前缀）"__NAME_READONLY_ATTR__>
+        <button type="button" id="btn-test-db" class="btn-outline btn-test-db">检测数据库连接</button>
+      </div>
+      <div class="db-test-msg" id="db-test-msg"></div>
+      <p class="hint">__NAME_HINT_TEXT__</p>
       <label class="field-label" for="direct-domain">直连域名</label>
       <input id="direct-domain" type="text" name="direct_domain" value="__DIRECT_DOMAIN_TEXT__" spellcheck="false" placeholder="可选，如 your-domain.com">
       <label class="tls-toggle" id="direct-tls-wrap" for="direct-tls">
@@ -1267,6 +1347,31 @@ def render_advices_page(saved, skipped, domain_error="", save_error=False, remov
       var directInput = document.getElementById("direct-domain");
       var directTls = document.getElementById("direct-tls");
       var directTlsWrap = document.getElementById("direct-tls-wrap");
+
+      var testDbBtn = document.getElementById("btn-test-db");
+      var testDbMsg = document.getElementById("db-test-msg");
+      if (testDbBtn && testDbMsg) {
+        testDbBtn.addEventListener("click", function(){
+          testDbMsg.textContent = "正在检测数据库连接状态，请稍候…";
+          testDbMsg.className = "db-test-msg";
+          testDbBtn.disabled = true;
+          var fd = new URLSearchParams();
+          fd.append("action", "test_db");
+          fetch("/__SETTINGS_PATH__", { method: "POST", body: fd })
+            .then(function(r){ return r.json(); })
+            .then(function(d){
+              testDbBtn.disabled = false;
+              testDbMsg.textContent = d.msg || "";
+              testDbMsg.className = "db-test-msg " + (d.status || "");
+            })
+            .catch(function(err){
+              testDbBtn.disabled = false;
+              testDbMsg.textContent = "连接失败，请检查数据库链接是否正确";
+              testDbMsg.className = "db-test-msg failed";
+            });
+        });
+      }
+
       var parseLine = function(s){
         var line = String(s || "").trim();
         if (!line) return null;
@@ -1492,6 +1597,8 @@ def render_advices_page(saved, skipped, domain_error="", save_error=False, remov
             .replace("__PROTO_C_CHECKED__", proto_c_checked)
             .replace("__ADDRESS_TEXT__", address_text)
             .replace("__NODE_NAME_TEXT__", node_name_text)
+            .replace("__NAME_READONLY_ATTR__", name_readonly_attr)
+            .replace("__NAME_HINT_TEXT__", name_hint_text)
             .replace("__DIRECT_DOMAIN_TEXT__", direct_domain_text)
             .replace("__DIRECT_TLS_CHECKED__", direct_tls_checked_attr)
             .replace("__DIRECT_TLS_DISABLED__", direct_tls_disabled_attr)
@@ -1993,6 +2100,14 @@ async def _handle_advices(req):
                 return
         else:
             params = urllib.parse.parse_qs(body.decode("utf-8", "replace"))
+
+        if params.get("action") == ["test_db"]:
+            res = _db_test_connection()
+            body_text = json.dumps(res, ensure_ascii=False)
+            await send_simple(req.writer, 200, "OK",
+                              [("Content-Type", "application/json; charset=utf-8")],
+                              body_text.encode("utf-8"))
+            return
 
         if params.get("action") == ["preview"]:
             # 预览接口：抓取节点链接并返回识别到的地址（供前端预览/追加）
