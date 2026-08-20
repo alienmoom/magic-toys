@@ -1,6 +1,6 @@
 pymysql>=1.1.0
-psycopg[binary]>=3.2
+psycopg-binary>=3.2.0
 h2>=4.4.0
 # SS AEAD 硬件加速（强烈推荐）。未安装时自动回退纯 Python 实现，SS 会明显变慢。
 # 注：Debian/Ubuntu 也可用 apt 安装 python3-pycryptodome（app.py 同时兼容两种命名空间）。
-pycryptodome>=3.19
+pycryptodome>=3.19.0
