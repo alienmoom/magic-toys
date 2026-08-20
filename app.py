@@ -670,10 +670,26 @@ def _db_get_config(key=None):
     actual_key = (key or NAME or "config").strip()
     try:
         with conn.cursor() as cur:
+            # 1. 优先按 actual_key（即 NAME）查找
             cur.execute("SELECT config_value FROM advices_config WHERE config_key = %s", (actual_key,))
             row = cur.fetchone()
+            if row is not None:
+                _db_db_ok = True
+                return row[0]
+            # 2. 若未按 NAME 找到，且 actual_key 不是 'config'，平滑兼容查找历史 'config' 主键的记录
+            if actual_key != "config":
+                cur.execute("SELECT config_value FROM advices_config WHERE config_key = 'config'")
+                row_legacy = cur.fetchone()
+                if row_legacy is not None:
+                    try:
+                        parsed = json.loads(row_legacy[0])
+                        if isinstance(parsed, dict) and (parsed.get("name") or "").strip().lower() == actual_key.lower():
+                            _db_db_ok = True
+                            return row_legacy[0]
+                    except Exception:
+                        pass
         _db_db_ok = True
-        return row[0] if row is not None else None
+        return None
     except Exception as e:
         _db_note_failure("read", e)
         return None
@@ -739,13 +755,25 @@ def _db_test_connection():
         has_record = False
         try:
             with conn.cursor() as cur:
-                cur.execute("SELECT 1 FROM advices_config WHERE config_key = %s", (NAME.strip(),))
-                has_record = bool(cur.fetchone())
+                cur.execute("SELECT config_value FROM advices_config WHERE config_key = %s", (NAME.strip(),))
+                row = cur.fetchone()
+                if row:
+                    has_record = True
+                else:
+                    cur.execute("SELECT config_value FROM advices_config WHERE config_key = 'config'")
+                    row_legacy = cur.fetchone()
+                    if row_legacy:
+                        try:
+                            parsed = json.loads(row_legacy[0])
+                            if isinstance(parsed, dict) and (parsed.get("name") or "").strip().lower() == NAME.strip().lower():
+                                has_record = True
+                        except Exception:
+                            pass
         except Exception:
             pass
         conn.close()
         db_label = "PostgreSQL" if DB_TYPE == "postgres" else "MySQL"
-        record_info = f"（已存在「{NAME.strip()}」的配置记录，将直接读取）" if has_record else f"（暂无「{NAME.strip()}」的记录，保存时将追加新记录）"
+        record_info = f"（已匹配到「{NAME.strip()}」的云端历史配置记录，将直接读取）" if has_record else f"（暂无「{NAME.strip()}」的记录，保存时将追加新记录）"
         return {
             "status": "success",
             "msg": f"数据库连接成功（{db_label}）{record_info}"
