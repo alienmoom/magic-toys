@@ -392,7 +392,7 @@ def _mysql_connect():
 
 class _MiniPG:
     """轻量级原生 PostgreSQL 客户端（纯 Python socket 实现，零第三方依赖，支持 SSL / MD5 / SCRAM-SHA-256）"""
-    def __init__(self, host, port, user, password, dbname, sslmode=True, timeout=15):
+    def __init__(self, host, port, user, password, dbname, sslmode=True, timeout=6):
         self.host = host
         self.port = int(port)
         self.user = user
@@ -2102,7 +2102,7 @@ async def _handle_advices(req):
             params = urllib.parse.parse_qs(body.decode("utf-8", "replace"))
 
         if params.get("action") == ["test_db"]:
-            res = _db_test_connection()
+            res = await asyncio.to_thread(_db_test_connection)
             body_text = json.dumps(res, ensure_ascii=False)
             await send_simple(req.writer, 200, "OK",
                               [("Content-Type", "application/json; charset=utf-8")],
