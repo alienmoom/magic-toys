@@ -381,9 +381,9 @@ def _mysql_connect():
         password=_DB_FROM_URL["password"],
         database=_DB_FROM_URL["name"],
         charset="utf8mb4",
-        connect_timeout=5,
-        read_timeout=5,
-        write_timeout=5,
+        connect_timeout=15,
+        read_timeout=15,
+        write_timeout=15,
         ssl={"check_hostname": False, "verify_mode": ssl.CERT_NONE},
     )
     with conn.cursor() as cur:
@@ -392,40 +392,279 @@ def _mysql_connect():
     return conn
 
 
+class _MiniPG:
+    """轻量级原生 PostgreSQL 客户端（纯 Python socket 实现，零第三方依赖，支持 SSL / MD5 / SCRAM-SHA-256）"""
+    def __init__(self, host, port, user, password, dbname, sslmode=True, timeout=15):
+        self.host = host
+        self.port = int(port)
+        self.user = user
+        self.password = password
+        self.dbname = dbname
+        self.sslmode = sslmode
+        self.timeout = timeout
+        self.sock = None
+
+    def connect(self):
+        raw_sock = socket.create_connection((self.host, self.port), timeout=self.timeout)
+        raw_sock.settimeout(self.timeout)
+        if self.sslmode:
+            raw_sock.sendall(struct.pack('>II', 8, 80877103))
+            ssl_resp = raw_sock.recv(1)
+            if ssl_resp == b'S':
+                ctx = ssl.create_default_context()
+                ctx.check_hostname = False
+                ctx.verify_mode = ssl.CERT_NONE
+                self.sock = ctx.wrap_socket(raw_sock, server_hostname=self.host)
+            else:
+                self.sock = raw_sock
+        else:
+            self.sock = raw_sock
+
+        params = [
+            b"user", self.user.encode("utf-8"),
+            b"database", self.dbname.encode("utf-8"),
+            b"client_encoding", b"UTF8",
+            b""
+        ]
+        body = b"\x00".join(params) + b"\x00"
+        msg = struct.pack(">II", len(body) + 8, 196608) + body
+        self.sock.sendall(msg)
+
+        while True:
+            mtype, mdata = self._read_message()
+            if mtype == b'R':
+                auth_type = struct.unpack(">I", mdata[:4])[0]
+                if auth_type == 0:
+                    pass
+                elif auth_type == 3:
+                    self._send_message(b'p', self.password.encode("utf-8") + b"\x00")
+                elif auth_type == 5:
+                    salt = mdata[4:8]
+                    h1 = hashlib.md5(self.password.encode("utf-8") + self.user.encode("utf-8")).hexdigest()
+                    h2 = "md5" + hashlib.md5(h1.encode("ascii") + salt).hexdigest()
+                    self._send_message(b'p', h2.encode("ascii") + b"\x00")
+                elif auth_type == 10:
+                    self._handle_scram(mdata[4:])
+                else:
+                    raise Exception(f"Unsupported auth type: {auth_type}")
+            elif mtype == b'Z':
+                break
+            elif mtype == b'E':
+                raise Exception("Auth Error: " + self._parse_error(mdata))
+
+    def _read_exact(self, n):
+        buf = b""
+        while len(buf) < n:
+            chunk = self.sock.recv(n - len(buf))
+            if not chunk:
+                raise EOFError("Connection closed by peer")
+            buf += chunk
+        return buf
+
+    def _read_message(self):
+        mtype = self._read_exact(1)
+        length_bytes = self._read_exact(4)
+        length = struct.unpack(">I", length_bytes)[0] - 4
+        mdata = self._read_exact(length) if length > 0 else b""
+        return mtype, mdata
+
+    def _send_message(self, mtype, data):
+        length = len(data) + 4
+        self.sock.sendall(mtype + struct.pack(">I", length) + data)
+
+    def _parse_error(self, data):
+        parts = []
+        i = 0
+        while i < len(data) - 1:
+            code = chr(data[i])
+            i += 1
+            null_idx = data.find(b"\x00", i)
+            if null_idx == -1:
+                break
+            val = data[i:null_idx].decode("utf-8", "replace")
+            i = null_idx + 1
+            parts.append(f"{code}:{val}")
+        return " | ".join(parts)
+
+    def _handle_scram(self, data):
+        client_nonce = base64.b64encode(os.urandom(18)).decode("ascii")
+        client_first_bare = f"n=*,r={client_nonce}"
+        client_first = f"n,,{client_first_bare}".encode("utf-8")
+        body = b"SCRAM-SHA-256\x00" + struct.pack(">I", len(client_first)) + client_first
+        self._send_message(b'p', body)
+
+        mtype, mdata = self._read_message()
+        if mtype == b'E':
+            raise Exception("SCRAM Error: " + self._parse_error(mdata))
+        server_first = mdata[4:].decode("utf-8")
+        params = dict(item.split("=", 1) for item in server_first.split(","))
+        server_nonce = params["r"]
+        salt = base64.b64decode(params["s"])
+        iterations = int(params["i"])
+
+        client_final_without_proof = f"c=biws,r={server_nonce}"
+        auth_message = f"{client_first_bare},{server_first},{client_final_without_proof}".encode("utf-8")
+
+        salted_password = hashlib.pbkdf2_hmac("sha256", self.password.encode("utf-8"), salt, iterations, 32)
+        client_key = hmac.new(salted_password, b"Client Key", hashlib.sha256).digest()
+        stored_key = hashlib.sha256(client_key).digest()
+        client_signature = hmac.new(stored_key, auth_message, hashlib.sha256).digest()
+        client_proof = bytes(a ^ b for a, b in zip(client_key, client_signature))
+        proof_b64 = base64.b64encode(client_proof).decode("ascii")
+
+        client_final = f"{client_final_without_proof},p={proof_b64}".encode("utf-8")
+        self._send_message(b'p', client_final)
+
+        mtype, mdata = self._read_message()
+        if mtype == b'E':
+            raise Exception("SCRAM Final Error: " + self._parse_error(mdata))
+
+    def query(self, sql):
+        self._send_message(b'Q', sql.encode("utf-8") + b"\x00")
+        rows = []
+        err = None
+        while True:
+            mtype, mdata = self._read_message()
+            if mtype == b'D':
+                num_cols = struct.unpack(">H", mdata[:2])[0]
+                idx = 2
+                row = []
+                for _ in range(num_cols):
+                    col_len = struct.unpack(">i", mdata[idx:idx+4])[0]
+                    idx += 4
+                    if col_len == -1:
+                        row.append(None)
+                    else:
+                        val = mdata[idx:idx+col_len].decode("utf-8", "replace")
+                        idx += col_len
+                        row.append(val)
+                rows.append(row)
+            elif mtype == b'Z':
+                break
+            elif mtype == b'E':
+                err = self._parse_error(mdata)
+        if err:
+            raise Exception("Query Error: " + err)
+        return rows
+
+    def close(self):
+        if self.sock:
+            try:
+                self._send_message(b'X', b'')
+                self.sock.close()
+            except Exception:
+                pass
+            self.sock = None
+
+    def cursor(self):
+        return _MiniPGCursor(self)
+
+    def commit(self):
+        pass
+
+
+class _MiniPGCursor:
+    def __init__(self, conn):
+        self.conn = conn
+        self.last_rows = []
+
+    def execute(self, sql, params=None):
+        if params:
+            formatted_sql = sql
+            for p in params:
+                if p is None:
+                    rep = "NULL"
+                else:
+                    escaped = str(p).replace("'", "''")
+                    rep = f"'{escaped}'"
+                formatted_sql = formatted_sql.replace("%s", rep, 1)
+            sql = formatted_sql
+        self.last_rows = self.conn.query(sql)
+
+    def fetchone(self):
+        if self.last_rows:
+            return self.last_rows[0]
+        return None
+
+    def fetchall(self):
+        return self.last_rows
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        pass
+
+
 def _pg_connect():
+    driver = None
     try:
         import psycopg
+        driver = psycopg
     except ImportError:
-        raise ImportError("psycopg is not installed (pip install 'psycopg[binary]')")
-    kwargs = {
-        "host": _DB_FROM_URL["host"],
-        "port": _DB_FROM_URL["port"],
-        "user": _DB_FROM_URL["user"],
-        "password": _DB_FROM_URL["password"],
-        "dbname": _DB_FROM_URL["name"],
-        "connect_timeout": 5,
-    }
-    query = urllib.parse.urlparse(DATABASE_URL).query
-    for key, values in urllib.parse.parse_qs(query).items():
-        if values and key.lower() not in kwargs:
-            kwargs[key.lower()] = values[-1]
-    conn = psycopg.connect(**kwargs)
-    with conn.cursor() as cur:
+        try:
+            import psycopg2
+            driver = psycopg2
+        except ImportError:
+            driver = None
+
+    conn_str = DATABASE_URL
+
+    if driver is not None:
+        conn = None
+        if conn_str:
+            try:
+                conn = driver.connect(conn_str, connect_timeout=15)
+            except Exception:
+                conn = None
+        if conn is None:
+            kwargs = {
+                "host": _DB_FROM_URL["host"],
+                "port": _DB_FROM_URL["port"],
+                "user": _DB_FROM_URL["user"],
+                "password": _DB_FROM_URL["password"],
+                "dbname": _DB_FROM_URL["name"],
+                "connect_timeout": 15,
+            }
+            query = urllib.parse.urlparse(conn_str).query
+            for key, values in urllib.parse.parse_qs(query).items():
+                if values and key.lower() not in kwargs:
+                    kwargs[key.lower()] = values[-1]
+            conn = driver.connect(**kwargs)
+        with conn.cursor() as cur:
+            _db_ensure_schema(cur)
+        conn.commit()
+        return conn
+
+    client = _MiniPG(
+        host=_DB_FROM_URL["host"],
+        port=_DB_FROM_URL["port"],
+        user=_DB_FROM_URL["user"],
+        password=_DB_FROM_URL["password"],
+        dbname=_DB_FROM_URL["name"],
+        sslmode=True,
+        timeout=15,
+    )
+    client.connect()
+    with client.cursor() as cur:
         _db_ensure_schema(cur)
-    conn.commit()
-    return conn
+    return client
 
 
 def _db_connect():
     if not DB_ENABLED or not _DB_FROM_URL:
         return None
-    try:
-        if DB_TYPE == "postgres":
-            return _pg_connect()
-        return _mysql_connect()
-    except Exception as e:
-        _db_note_failure("connect", e)
-        return None
+    for attempt in range(2):
+        try:
+            if DB_TYPE == "postgres":
+                return _pg_connect()
+            return _mysql_connect()
+        except Exception as e:
+            if attempt == 0:
+                time.sleep(1)
+                continue
+            _db_note_failure("connect", e)
+            return None
 
 
 def _db_get_config():
