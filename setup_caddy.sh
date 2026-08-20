@@ -1463,7 +1463,8 @@ update_proxy_app_component() {
 
         # 重启服务
         if systemctl is-active --quiet magic-toys 2>/dev/null; then
-            echo -e "${YELLOW}>>> 正在重启 Magic Toys 代理服务...${PLAIN}"
+            echo -e "${YELLOW}>>> 正在平滑重启 Magic Toys 代理服务...${PLAIN}"
+            echo -e "${CYAN}💡 提示：若您当前 SSH 连接正通过本 VPS 节点代理，重启瞬间网络可能短暂闪断 1-2 秒。${PLAIN}"
             systemctl restart magic-toys 2>/dev/null || true
         fi
         echo -e "${GREEN}✔ Magic Toys 代理服务代码更新完成！${PLAIN}"
@@ -1476,13 +1477,11 @@ update_proxy_app_component() {
     local tmp_script="/tmp/setup_caddy_new.sh"
     if curl -sLf "https://raw.githubusercontent.com/alienmoom/magic-toys/main/setup_caddy.sh" -o "$tmp_script"; then
         if [ -s "$tmp_script" ] && grep -q "Magic Toys" "$tmp_script"; then
-            cp -f "$tmp_script" /usr/local/bin/toy
-            chmod +x /usr/local/bin/toy
-            if [ -f "$SCRIPT_PATH" ]; then
-                cp -f "$tmp_script" "$SCRIPT_PATH"
-                chmod +x "$SCRIPT_PATH"
+            chmod +x "$tmp_script"
+            mv -f "$tmp_script" /usr/local/bin/toy 2>/dev/null || cp -f "$tmp_script" /usr/local/bin/toy
+            if [ -f "$SCRIPT_PATH" ] && [ "$SCRIPT_PATH" != "/usr/local/bin/toy" ]; then
+                cp -f /usr/local/bin/toy "$SCRIPT_PATH" 2>/dev/null || true
             fi
-            rm -f "$tmp_script"
             echo -e "${GREEN}✔ 管理向导脚本已成功更新至最新版！${PLAIN}"
         else
             echo -e "${RED}✖ 下载的向导脚本内容异常，跳过脚本替换。${PLAIN}"
